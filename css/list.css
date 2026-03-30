@@ -1,0 +1,175 @@
+/* === Teleport Audit List — Card View === */
+
+/* Hide original table when cards are active */
+.tp-cards-active #table-record,
+.tp-cards-active .table-responsive {
+    display: none !important;
+}
+
+/* Card container */
+.tp-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0;
+    margin: 0;
+}
+
+/* Individual card row */
+.tp-card {
+    display: flex;
+    align-items: center;
+    background: #fff;
+    border-radius: 8px;
+    padding: 10px 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.tp-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+/* Left section: avatar + user info */
+.tp-card-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Avatar circle */
+.tp-card-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+/* User info */
+.tp-card-user {
+    min-width: 0;
+}
+
+.tp-card-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: #1a1a2e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tp-card-time {
+    font-size: 11px;
+    color: #999;
+    margin-top: 1px;
+}
+
+/* Right section: duration + action */
+.tp-card-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+}
+
+/* Duration display */
+.tp-card-duration {
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    min-width: 80px;
+}
+
+.tp-card-duration.long {
+    color: #0a84ff;
+}
+
+.tp-card-duration.short {
+    color: #30d158;
+}
+
+/* Play button */
+.tp-card-play {
+    padding: 6px 16px;
+    border: none;
+    border-radius: 6px;
+    background: #0a84ff;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+}
+
+.tp-card-play:hover {
+    background: #409cff;
+}
+
+/* "使用中" active status */
+.tp-card-active-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    background: rgba(48, 209, 88, 0.12);
+    color: #30d158;
+    font-size: 12px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tp-card-pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #30d158;
+    animation: tp-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes tp-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* Cache indicator */
+.tp-card-cached {
+    font-size: 10px;
+    color: #0a84ff;
+    margin-right: 4px;
+}
+
+/* Note tag indicator on list */
+.tp-card-tag {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-weight: 500;
+    margin-left: 6px;
+}
+
+.tp-card-tag.pass {
+    background: rgba(48, 209, 88, 0.12);
+    color: #30d158;
+}
+
+.tp-card-tag.fail {
+    background: rgba(255, 69, 58, 0.12);
+    color: #ff453a;
+}
+
+.tp-card-tag.pending {
+    background: rgba(255, 159, 10, 0.12);
+    color: #ff9f0a;
+}
