@@ -44,6 +44,14 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
+#player-app {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
 /* === Top Bar (title bar) === */
 #top-bar {
     height: 44px;
@@ -73,10 +81,12 @@ body {
     flex: 1;
     overflow: hidden;
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     background: #000;
+}
+
+/* Hide any stray elements from original page scripts */
+body > :not(#player-app):not(script) {
+    display: none !important;
 }
 
 #canvas-wrapper {
