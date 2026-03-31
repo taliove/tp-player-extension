@@ -2,30 +2,70 @@
 (function () {
     var s = document.createElement('script');
     s.textContent = '(' + function () {
-        // Block window.open for tp-assist:// protocol
+        var RE = /^tp-assist:/i;
+
+        // 1. Block window.open
         var _open = window.open;
         window.open = function (url) {
-            if (url && /^tp-assist:/i.test(String(url))) return null;
+            if (url && RE.test(String(url))) return null;
             return _open.apply(this, arguments);
         };
-        // Block iframe src for tp-assist:// protocol
-        var desc = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'src');
-        if (desc && desc.set) {
+
+        // 2. Block iframe src property setter
+        var iframeDesc = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'src');
+        if (iframeDesc && iframeDesc.set) {
             Object.defineProperty(HTMLIFrameElement.prototype, 'src', {
                 set: function (v) {
-                    if (/^tp-assist:/i.test(String(v))) return;
-                    desc.set.call(this, v);
+                    if (RE.test(String(v))) return;
+                    iframeDesc.set.call(this, v);
                 },
-                get: desc.get,
+                get: iframeDesc.get,
                 configurable: true
             });
         }
-        // Block location assignment for tp-assist://
-        var origAssign = location.assign;
-        location.assign = function (url) {
-            if (/^tp-assist:/i.test(String(url))) return;
-            return origAssign.call(this, url);
+
+        // 3. Block setAttribute('src', 'tp-assist://...')  (used by jQuery .attr())
+        var _setAttr = Element.prototype.setAttribute;
+        Element.prototype.setAttribute = function (name, value) {
+            if (this.tagName === 'IFRAME' && name.toLowerCase() === 'src' && RE.test(String(value))) return;
+            return _setAttr.apply(this, arguments);
         };
+
+        // 4. Block location.assign / location.replace
+        var _assign = location.assign;
+        location.assign = function (url) {
+            if (RE.test(String(url))) return;
+            return _assign.call(this, url);
+        };
+        var _replace = location.replace;
+        location.replace = function (url) {
+            if (RE.test(String(url))) return;
+            return _replace.call(this, url);
+        };
+
+        // 5. Block location.href setter (catches location.href = 'tp-assist://...' and window.location = '...')
+        try {
+            var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+            if (hrefDesc && hrefDesc.set) {
+                Object.defineProperty(Location.prototype, 'href', {
+                    set: function (v) {
+                        if (RE.test(String(v))) return;
+                        hrefDesc.set.call(this, v);
+                    },
+                    get: hrefDesc.get,
+                    configurable: true
+                });
+            }
+        } catch (e) { /* some browsers may not allow this */ }
+
+        // 6. Block anchor clicks with tp-assist:// href
+        document.addEventListener('click', function (e) {
+            var a = e.target && e.target.closest ? e.target.closest('a') : null;
+            if (a && a.href && RE.test(a.href)) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }, true);
     } + ')();';
     (document.head || document.documentElement).appendChild(s);
     s.remove();
