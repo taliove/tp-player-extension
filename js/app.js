@@ -415,6 +415,9 @@
 
                     showShortcutHint();
 
+                    // Refresh cache status in info panel after cache write completes
+                    setTimeout(function () { updateInfoPanel(); }, 500);
+
                     if (corruptedRanges.length > 0) {
                         showToast('\u68c0\u6d4b\u5230 ' + corruptedRanges.length + ' \u5904\u6570\u636e\u635f\u574f\uff0c\u5df2\u81ea\u52a8\u8df3\u8fc7', 'warning');
                     }
@@ -434,6 +437,7 @@
                                     allPackets.sort(function (a, b) { return a.timeMs - b.timeMs; });
                                     player.updatePackets(allPackets, keyframes, header.timeMs);
                                     renderCorruptMarks(corruptedRanges, allPackets, header.timeMs);
+                                    setTimeout(function () { updateInfoPanel(); }, 500);
                                 }).catch(function (err) {
                                     showToast('\u6570\u636e\u6587\u4ef6 ' + idx + ' \u52a0\u8f7d\u5931\u8d25: ' + err.message, 'warning');
                                 });
