@@ -1,5 +1,11 @@
 /* === Teleport Audit List — Card View === */
 
+/* Hide TP-Assist detection modal and backdrop */
+#dialog-need-assist,
+.modal-backdrop {
+    display: none !important;
+}
+
 /* Hide original table when cards are active */
 .tp-cards-active #table-record,
 .tp-cards-active .table-responsive {

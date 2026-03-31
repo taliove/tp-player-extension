@@ -1,11 +1,33 @@
 // Teleport RDP Web Player — Cache Manager
-// Uses Cache API for binary recording files, localStorage for metadata.
+// Uses IndexedDB for binary recording files, localStorage for metadata.
 // LRU eviction when total size exceeds limit.
+// Gracefully degrades when IndexedDB or localStorage is not available.
 
 TPP.createCacheManager = function (rid) {
-    var CACHE_NAME = 'tp-player-cache';
+    var DB_NAME = 'tp-player-cache';
+    var DB_VERSION = 1;
+    var STORE_NAME = 'files';
     var META_KEY = 'tp_cache_meta';
     var MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2GB default
+
+    var db = null;
+
+    function openDB() {
+        if (db) return Promise.resolve(db);
+        return new Promise(function (resolve, reject) {
+            try {
+                var req = indexedDB.open(DB_NAME, DB_VERSION);
+                req.onupgradeneeded = function (e) {
+                    var d = e.target.result;
+                    if (!d.objectStoreNames.contains(STORE_NAME)) {
+                        d.createObjectStore(STORE_NAME);
+                    }
+                };
+                req.onsuccess = function () { db = req.result; resolve(db); };
+                req.onerror = function () { reject(req.error); };
+            } catch (e) { reject(e); }
+        });
+    }
 
     function readMeta() {
         try { return JSON.parse(localStorage.getItem(META_KEY)) || {}; }
@@ -17,34 +39,38 @@ TPP.createCacheManager = function (rid) {
         catch (e) { /* quota */ }
     }
 
-    function cacheKey(filename) {
-        return '/tp-cache/' + rid + '/' + filename;
+    function storeKey(filename) {
+        return rid + '/' + filename;
     }
 
     function getFromCache(filename) {
-        return caches.open(CACHE_NAME).then(function (cache) {
-            return cache.match(cacheKey(filename));
-        }).then(function (resp) {
-            if (!resp) return null;
-            // Update last access time
+        return openDB().then(function (d) {
+            return new Promise(function (resolve, reject) {
+                var tx = d.transaction(STORE_NAME, 'readonly');
+                var req = tx.objectStore(STORE_NAME).get(storeKey(filename));
+                req.onsuccess = function () { resolve(req.result || null); };
+                req.onerror = function () { reject(req.error); };
+            });
+        }).then(function (buf) {
+            if (!buf) return null;
             var meta = readMeta();
             if (meta[rid]) {
                 meta[rid].lastAccess = Date.now();
                 writeMeta(meta);
             }
-            return resp.arrayBuffer();
-        });
+            return buf;
+        }).catch(function () { return null; });
     }
 
     function putInCache(filename, arrayBuffer) {
-        var key = cacheKey(filename);
-        var resp = new Response(arrayBuffer, {
-            headers: { 'Content-Type': 'application/octet-stream' }
-        });
-        return caches.open(CACHE_NAME).then(function (cache) {
-            return cache.put(key, resp);
+        return openDB().then(function (d) {
+            return new Promise(function (resolve, reject) {
+                var tx = d.transaction(STORE_NAME, 'readwrite');
+                tx.objectStore(STORE_NAME).put(arrayBuffer, storeKey(filename));
+                tx.oncomplete = function () { resolve(); };
+                tx.onerror = function () { reject(tx.error); };
+            });
         }).then(function () {
-            // Update metadata
             var meta = readMeta();
             if (!meta[rid]) {
                 meta[rid] = { totalSize: 0, lastAccess: Date.now(), files: {} };
@@ -58,7 +84,7 @@ TPP.createCacheManager = function (rid) {
             meta[rid].lastAccess = Date.now();
             writeMeta(meta);
             return evictIfNeeded();
-        });
+        }).catch(function () { /* cache write failed, ignore */ });
     }
 
     function evictIfNeeded() {
@@ -73,40 +99,51 @@ TPP.createCacheManager = function (rid) {
         }
         if (totalSize <= MAX_BYTES) return Promise.resolve();
 
-        // Sort by lastAccess ascending (oldest first)
         entries.sort(function (a, b) { return a.lastAccess - b.lastAccess; });
 
         var toDelete = [];
         while (totalSize > MAX_BYTES && entries.length > 0) {
             var oldest = entries.shift();
-            if (oldest.rid === String(rid)) continue; // Don't evict current recording
+            if (oldest.rid === String(rid)) continue;
             toDelete.push(oldest.rid);
             totalSize -= oldest.size;
         }
 
-        return caches.open(CACHE_NAME).then(function (cache) {
-            var promises = [];
+        if (toDelete.length === 0) return Promise.resolve();
+
+        return openDB().then(function (d) {
+            var tx = d.transaction(STORE_NAME, 'readwrite');
+            var store = tx.objectStore(STORE_NAME);
             for (var i = 0; i < toDelete.length; i++) {
                 var delRid = toDelete[i];
                 var files = meta[delRid] ? meta[delRid].files : {};
                 for (var f in files) {
                     if (files.hasOwnProperty(f)) {
-                        promises.push(cache.delete('/tp-cache/' + delRid + '/' + f));
+                        store.delete(delRid + '/' + f);
                     }
                 }
                 delete meta[delRid];
             }
             writeMeta(meta);
-            return Promise.all(promises);
+            return new Promise(function (resolve) {
+                tx.oncomplete = function () { resolve(); };
+                tx.onerror = function () { resolve(); };
+            });
+        }).catch(function () {
+            for (var i = 0; i < toDelete.length; i++) delete meta[toDelete[i]];
+            writeMeta(meta);
         });
     }
 
     function isCached(filename) {
-        return caches.open(CACHE_NAME).then(function (cache) {
-            return cache.match(cacheKey(filename));
-        }).then(function (resp) {
-            return !!resp;
-        });
+        return openDB().then(function (d) {
+            return new Promise(function (resolve) {
+                var tx = d.transaction(STORE_NAME, 'readonly');
+                var req = tx.objectStore(STORE_NAME).get(storeKey(filename));
+                req.onsuccess = function () { resolve(!!req.result); };
+                req.onerror = function () { resolve(false); };
+            });
+        }).catch(function () { return false; });
     }
 
     function isAnyCached() {
@@ -122,25 +159,35 @@ TPP.createCacheManager = function (rid) {
     function clearCurrent() {
         var meta = readMeta();
         var files = meta[rid] ? meta[rid].files : {};
-        return caches.open(CACHE_NAME).then(function (cache) {
-            var promises = [];
+        delete meta[rid];
+        writeMeta(meta);
+        return openDB().then(function (d) {
+            var tx = d.transaction(STORE_NAME, 'readwrite');
+            var store = tx.objectStore(STORE_NAME);
             for (var f in files) {
                 if (files.hasOwnProperty(f)) {
-                    promises.push(cache.delete(cacheKey(f)));
+                    store.delete(storeKey(f));
                 }
             }
-            delete meta[rid];
-            writeMeta(meta);
-            return Promise.all(promises);
-        });
+            return new Promise(function (resolve) {
+                tx.oncomplete = function () { resolve(); };
+                tx.onerror = function () { resolve(); };
+            });
+        }).catch(function () {});
     }
 
     function clearAll() {
         writeMeta({});
-        return caches.delete(CACHE_NAME);
+        return openDB().then(function (d) {
+            var tx = d.transaction(STORE_NAME, 'readwrite');
+            tx.objectStore(STORE_NAME).clear();
+            return new Promise(function (resolve) {
+                tx.oncomplete = function () { resolve(); };
+                tx.onerror = function () { resolve(); };
+            });
+        }).catch(function () {});
     }
 
-    // Static: check if a given rid is cached (for list page)
     function isRidCached(checkRid) {
         var meta = readMeta();
         return !!meta[checkRid];

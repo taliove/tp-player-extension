@@ -18,6 +18,11 @@
     var rid = params.get('rid') || location.pathname.split('/').pop();
     var extBase = chrome.runtime.getURL('');
 
+    // Immediately hide page to prevent FOUC — visible only after player.css loads
+    var _hideStyle = document.createElement('style');
+    _hideStyle.textContent = 'html{visibility:hidden!important;background:#1c1c1e}';
+    (document.head || document.documentElement).appendChild(_hideStyle);
+
     // Replace the entire document at document_start (before original page loads)
     document.addEventListener('DOMContentLoaded', function () {
         takeover();
@@ -39,6 +44,11 @@
         // Clear the page
         document.head.innerHTML = '';
         document.body.innerHTML = '';
+
+        // Keep hidden until player.css loads (re-inject after head clear)
+        var hideStyle = document.createElement('style');
+        hideStyle.textContent = 'html{visibility:hidden!important;background:#1c1c1e}';
+        document.head.appendChild(hideStyle);
 
         // -- Head --
         appendMeta('charset', 'UTF-8');

@@ -1,3 +1,36 @@
+// Block TP-Assist detection — prevent custom protocol dialog
+(function () {
+    var s = document.createElement('script');
+    s.textContent = '(' + function () {
+        // Block window.open for tp-assist:// protocol
+        var _open = window.open;
+        window.open = function (url) {
+            if (url && /^tp-assist:/i.test(String(url))) return null;
+            return _open.apply(this, arguments);
+        };
+        // Block iframe src for tp-assist:// protocol
+        var desc = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'src');
+        if (desc && desc.set) {
+            Object.defineProperty(HTMLIFrameElement.prototype, 'src', {
+                set: function (v) {
+                    if (/^tp-assist:/i.test(String(v))) return;
+                    desc.set.call(this, v);
+                },
+                get: desc.get,
+                configurable: true
+            });
+        }
+        // Block location assignment for tp-assist://
+        var origAssign = location.assign;
+        location.assign = function (url) {
+            if (/^tp-assist:/i.test(String(url))) return;
+            return origAssign.call(this, url);
+        };
+    } + ')();';
+    (document.head || document.documentElement).appendChild(s);
+    s.remove();
+})();
+
 // Content script for /audit/record* pages
 // Replaces original table with compact card list, highlighting duration.
 (function () {

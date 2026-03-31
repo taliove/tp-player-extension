@@ -21,7 +21,6 @@
     var loadingProgress = document.getElementById('loading-progress');
     var errorOverlay = document.getElementById('error-overlay');
     var errorText = document.getElementById('error-text');
-    var metaInfo = document.getElementById('meta-info');
     var btnPlay = document.getElementById('btn-play');
     var speedGroup = document.getElementById('speed-group');
     var speedBtns = speedGroup.querySelectorAll('.seg-btn');
@@ -54,7 +53,8 @@
     var infoList = document.getElementById('info-list');
 
     // --- Core instances ---
-    var cacheManager = TPP.createCacheManager(rid);
+    var cacheManager = null;
+    try { cacheManager = TPP.createCacheManager(rid); } catch (e) { console.warn('Cache manager not available:', e); }
     var downloader = TPP.createDownloader(serverBase, rid, cacheManager);
     var imageCache = TPP.createImageCache();
     var renderer = TPP.createRenderer(canvas);
@@ -246,16 +246,18 @@
     });
 
     document.getElementById('menu-clear-cache-current').addEventListener('click', function () {
+        if (!cacheManager) { showToast('缓存不可用', 'warning'); closeAllMenus(); return; }
         cacheManager.clearCurrent().then(function () {
-            showToast('\u5f53\u524d\u5f55\u50cf\u7f13\u5b58\u5df2\u6e05\u9664', 'info');
+            showToast('当前录像缓存已清除', 'info');
             updateInfoPanel();
         });
         closeAllMenus();
     });
 
     document.getElementById('menu-clear-cache-all').addEventListener('click', function () {
+        if (!cacheManager) { showToast('缓存不可用', 'warning'); closeAllMenus(); return; }
         cacheManager.clearAll().then(function () {
-            showToast('\u6240\u6709\u7f13\u5b58\u5df2\u6e05\u9664', 'info');
+            showToast('所有缓存已清除', 'info');
             updateInfoPanel();
         });
         closeAllMenus();
@@ -324,7 +326,7 @@
             infoList.innerHTML = '<span class="info-label">\u52a0\u8f7d\u4e2d...</span>';
             return;
         }
-        var cacheSize = cacheManager.getCacheSize();
+        var cacheSize = cacheManager ? cacheManager.getCacheSize() : 0;
         var cacheSizeMB = (cacheSize / 1024 / 1024).toFixed(1);
         var cacheText = cacheSize > 0 ? '\u5df2\u7f13\u5b58 (' + cacheSizeMB + ' MB)' : '\u672a\u7f13\u5b58';
         infoList.innerHTML = ''
@@ -344,7 +346,6 @@
         }).then(function (tprBuf) {
             if (!tprBuf) throw new Error('\u65e0\u6cd5\u4e0b\u8f7d tp-rdp.tpr');
             var header = TPP.parseHeader(tprBuf);
-            metaInfo.textContent = 'RDP \u5f55\u5c4f\u56de\u653e \u2014 ' + header.accUsername + '@' + header.hostIp + ' (' + header.userUsername + ')';
             document.title = 'RDP \u56de\u653e \u2014 ' + header.accUsername + '@' + header.hostIp;
             renderer.init(header.width, header.height);
             zoom.init(header.width, header.height);

@@ -8,7 +8,7 @@
             "matches": ["*://*/audit/record*"],
             "js": ["content-list.js"],
             "css": ["css/list.css"],
-            "run_at": "document_idle"
+            "run_at": "document_start"
         },
         {
             "matches": ["*://*/audit/replay/*"],

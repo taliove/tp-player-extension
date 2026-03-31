@@ -5,6 +5,9 @@
 /* === Reset === */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* === Reveal page once this stylesheet loads (pairs with inline visibility:hidden) === */
+html { visibility: visible !important; }
+
 /* === Design Tokens === */
 :root {
     --bg-primary: #1c1c1e;
@@ -824,8 +827,6 @@ body > :not(#player-app):not(script) {
     padding: 10px;
     border-top: 0.5px solid var(--separator);
     flex-shrink: 0;
-    max-height: 140px;
-    overflow-y: auto;
 }
 
 #info-list {

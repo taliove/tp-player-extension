@@ -43,7 +43,7 @@ TPP.createDownloader = function(serverBase, rid, cacheManager) {
     function readFile(filename) {
         // Try cache first
         if (cacheManager) {
-            return cacheManager.getFromCache(filename).then(function (buf) {
+            return cacheManager.getFromCache(filename).catch(function () { return null; }).then(function (buf) {
                 if (buf) return buf;
                 return fetchAndCache(filename);
             });
@@ -68,7 +68,7 @@ TPP.createDownloader = function(serverBase, rid, cacheManager) {
     function readFileWithProgress(filename, onProgress) {
         // Try cache first
         if (cacheManager) {
-            return cacheManager.getFromCache(filename).then(function (buf) {
+            return cacheManager.getFromCache(filename).catch(function () { return null; }).then(function (buf) {
                 if (buf) {
                     if (onProgress) onProgress(buf.byteLength, buf.byteLength);
                     return buf;
