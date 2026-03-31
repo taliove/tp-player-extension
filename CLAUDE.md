@@ -32,3 +32,4 @@ chrome://extensions -> Developer mode -> Load unpacked -> select this directory
 - Vanilla JS, no build tools, no frameworks
 - Chinese UI labels (target users are Chinese)
 - All resources declared in `web_accessible_resources`
+- Git commits must NOT include `Co-Authored-By` or any Claude/AI attribution
