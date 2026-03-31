@@ -129,6 +129,14 @@
         }
 
         var rightHtml;
+        var cachedHtml = '';
+        try {
+            var cacheMeta = JSON.parse(localStorage.getItem('tp_cache_meta')) || {};
+            if (data.recordId && cacheMeta[data.recordId]) {
+                cachedHtml = '<span class="tp-card-cached" title="\u5df2\u7f13\u5b58">\u25cf</span>';
+            }
+        } catch (e) { /* ignore */ }
+
         if (data.isActive) {
             rightHtml = ''
                 + '<div class="tp-card-duration ' + (isLong ? 'long' : 'short') + '">' + data.durationRaw + '</div>'
@@ -136,6 +144,7 @@
         } else {
             rightHtml = ''
                 + '<div class="tp-card-duration ' + (isLong ? 'long' : 'short') + '">' + data.durationFormatted + '</div>'
+                + cachedHtml
                 + '<button class="tp-card-play" data-rid="' + (data.recordId || '') + '">&#9654; 播放</button>';
         }
 

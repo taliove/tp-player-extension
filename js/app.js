@@ -39,12 +39,28 @@
     var zoomDisplay = document.getElementById('zoom-display');
     var errorRetry = document.getElementById('error-retry');
     var toastContainer = document.getElementById('toast-container');
+    var actionOverlay = document.getElementById('action-overlay');
+    var shortcutHint = document.getElementById('shortcut-hint');
+
+    // --- New DOM references ---
+    var menuMeta = document.getElementById('menu-meta');
+    var menuFile = document.getElementById('menu-file');
+    var menuHistory = document.getElementById('menu-history');
+    var menuHelp = document.getElementById('menu-help');
+    var historyList = document.getElementById('history-list');
+    var historyEmpty = document.getElementById('history-empty');
+    var noteTags = document.getElementById('note-tags');
+    var noteText = document.getElementById('note-text');
+    var infoList = document.getElementById('info-list');
 
     // --- Core instances ---
-    var downloader = TPP.createDownloader(serverBase, rid);
+    var cacheManager = TPP.createCacheManager(rid);
+    var downloader = TPP.createDownloader(serverBase, rid, cacheManager);
     var imageCache = TPP.createImageCache();
     var renderer = TPP.createRenderer(canvas);
     var zoom = TPP.createZoomController(canvasWrapper, canvasContainer, zoomDisplay);
+    var notes = TPP.createNotes(rid);
+    var history = TPP.createHistory();
 
     var player = TPP.createPlayer(renderer, imageCache, {
         onProgress: function (cur, total) { updateProgressBar(cur, total); },
@@ -163,6 +179,162 @@
         btnOriginal.classList.toggle('active', mode === '1:1');
     }
 
+    // --- Keyboard action animations ---
+    function showActionIcon(symbol) {
+        var el = document.createElement('div');
+        el.className = 'action-icon';
+        el.textContent = symbol;
+        actionOverlay.innerHTML = '';
+        actionOverlay.appendChild(el);
+        el.addEventListener('animationend', function () { el.remove(); });
+    }
+
+    function showSeekIndicator(direction) {
+        var existing = canvasContainer.querySelector('.seek-indicator');
+        if (existing) existing.remove();
+        var el = document.createElement('div');
+        el.className = 'seek-indicator ' + direction;
+        el.textContent = direction === 'left' ? '\u00AB 10s' : '10s \u00BB';
+        canvasContainer.appendChild(el);
+        el.addEventListener('animationend', function () { el.remove(); });
+    }
+
+    function showShortcutHint() {
+        if (!shortcutHint) return;
+        shortcutHint.classList.remove('hidden');
+        setTimeout(function () {
+            shortcutHint.classList.add('hidden');
+        }, 3000);
+    }
+
+    // --- Menu dropdown logic ---
+    function closeAllMenus() {
+        var items = document.querySelectorAll('.menu-item');
+        for (var i = 0; i < items.length; i++) items[i].classList.remove('open');
+    }
+
+    function toggleMenu(menuItem) {
+        var isOpen = menuItem.classList.contains('open');
+        closeAllMenus();
+        if (!isOpen) menuItem.classList.add('open');
+    }
+
+    menuFile.querySelector('.menu-label').addEventListener('click', function (e) {
+        e.stopPropagation();
+        toggleMenu(menuFile);
+    });
+    menuHistory.querySelector('.menu-label').addEventListener('click', function (e) {
+        e.stopPropagation();
+        populateHistory();
+        toggleMenu(menuHistory);
+    });
+    menuHelp.querySelector('.menu-label').addEventListener('click', function (e) {
+        e.stopPropagation();
+        toggleMenu(menuHelp);
+    });
+
+    document.addEventListener('click', function () { closeAllMenus(); });
+
+    var dropdowns = document.querySelectorAll('.menu-dropdown');
+    for (var di = 0; di < dropdowns.length; di++) {
+        dropdowns[di].addEventListener('click', function (e) { e.stopPropagation(); });
+    }
+
+    document.getElementById('menu-back-list').addEventListener('click', function () {
+        closeAllMenus();
+        window.location.href = '/audit/record';
+    });
+
+    document.getElementById('menu-clear-cache-current').addEventListener('click', function () {
+        cacheManager.clearCurrent().then(function () {
+            showToast('\u5f53\u524d\u5f55\u50cf\u7f13\u5b58\u5df2\u6e05\u9664', 'info');
+            updateInfoPanel();
+        });
+        closeAllMenus();
+    });
+
+    document.getElementById('menu-clear-cache-all').addEventListener('click', function () {
+        cacheManager.clearAll().then(function () {
+            showToast('\u6240\u6709\u7f13\u5b58\u5df2\u6e05\u9664', 'info');
+            updateInfoPanel();
+        });
+        closeAllMenus();
+    });
+
+    document.getElementById('menu-show-shortcuts').addEventListener('click', function () {
+        closeAllMenus();
+        showShortcutHint();
+    });
+
+    // --- History panel ---
+    function populateHistory() {
+        var items = history.getAll();
+        historyList.innerHTML = '';
+        historyEmpty.style.display = items.length === 0 ? 'block' : 'none';
+        for (var i = 0; i < items.length; i++) {
+            (function (item) {
+                var div = document.createElement('div');
+                div.className = 'history-item' + (String(item.rid) === String(rid) ? ' current' : '');
+                div.innerHTML = ''
+                    + '<span class="history-item-user">' + (item.user || 'Unknown') + '</span>'
+                    + '<span class="history-item-meta">' + (item.duration || '') + ' | ' + (item.date || '') + '</span>';
+                div.addEventListener('click', function () {
+                    closeAllMenus();
+                    if (String(item.rid) === String(rid)) return;
+                    window.location.href = '/audit/replay/1/' + item.rid + '?tp_web_player=1&rid=' + item.rid;
+                });
+                historyList.appendChild(div);
+            })(items[i]);
+        }
+    }
+
+    // --- Notes panel ---
+    function initNotes() {
+        var note = notes.get();
+        var tagBtns = noteTags.querySelectorAll('.note-tag');
+        for (var i = 0; i < tagBtns.length; i++) {
+            tagBtns[i].classList.toggle('active', tagBtns[i].getAttribute('data-tag') === note.tag);
+        }
+        noteText.value = note.text || '';
+        for (var j = 0; j < tagBtns.length; j++) {
+            (function (btn) {
+                btn.addEventListener('click', function () {
+                    var updated = notes.setTag(btn.getAttribute('data-tag'));
+                    for (var k = 0; k < tagBtns.length; k++) {
+                        tagBtns[k].classList.toggle('active', tagBtns[k].getAttribute('data-tag') === updated.tag);
+                    }
+                });
+            })(tagBtns[j]);
+        }
+        var debounceTimer;
+        noteText.addEventListener('input', function () {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(function () {
+                notes.setText(noteText.value);
+            }, 500);
+        });
+    }
+
+    // --- Info panel ---
+    function updateInfoPanel(header) {
+        if (!infoList) return;
+        if (header) window.__TP_HEADER = header;
+        var h = window.__TP_HEADER;
+        if (!h) {
+            infoList.innerHTML = '<span class="info-label">\u52a0\u8f7d\u4e2d...</span>';
+            return;
+        }
+        var cacheSize = cacheManager.getCacheSize();
+        var cacheSizeMB = (cacheSize / 1024 / 1024).toFixed(1);
+        var cacheText = cacheSize > 0 ? '\u5df2\u7f13\u5b58 (' + cacheSizeMB + ' MB)' : '\u672a\u7f13\u5b58';
+        infoList.innerHTML = ''
+            + '<div><span class="info-label">\u7528\u6237:</span>' + h.userUsername + '</div>'
+            + '<div><span class="info-label">\u65f6\u957f:</span>' + formatTime(h.timeMs) + '</div>'
+            + '<div><span class="info-label">\u5206\u8fa8\u7387:</span>' + h.width + ' \u00d7 ' + h.height + '</div>'
+            + '<div><span class="info-label">\u8fdc\u7a0b:</span>' + h.accUsername + '@' + h.hostIp + '</div>'
+            + '<div><span class="info-label">\u7f13\u5b58:</span>' + cacheText + '</div>';
+    }
+
     // --- Init & load ---
     function init() {
         showLoading('\u6b63\u5728\u52a0\u8f7d WASM \u6a21\u5757...');
@@ -176,6 +348,21 @@
             document.title = 'RDP \u56de\u653e \u2014 ' + header.accUsername + '@' + header.hostIp;
             renderer.init(header.width, header.height);
             zoom.init(header.width, header.height);
+
+            // Update menu meta
+            menuMeta.textContent = header.userUsername + ' | ' + new Date(header.timestamp * 1000).toLocaleString('zh-CN');
+
+            // Record to history
+            history.add({
+                rid: rid,
+                user: header.userUsername + ' (' + header.accUsername + ')',
+                duration: formatTime(header.timeMs),
+                date: new Date(header.timestamp * 1000).toLocaleDateString('zh-CN'),
+                timestamp: Date.now()
+            });
+
+            // Update info panel
+            updateInfoPanel(header);
 
             // Apply saved zoom mode
             if (savedPrefs.zoomMode === '1:1') {
@@ -225,6 +412,8 @@
                     player.play();
                     btnPlay.textContent = '\u23F8';
 
+                    showShortcutHint();
+
                     if (corruptedRanges.length > 0) {
                         showToast('\u68c0\u6d4b\u5230 ' + corruptedRanges.length + ' \u5904\u6570\u636e\u635f\u574f\uff0c\u5df2\u81ea\u52a8\u8df3\u8fc7', 'warning');
                     }
@@ -265,7 +454,9 @@
 
     // Play/Pause
     btnPlay.addEventListener('click', function () {
-        btnPlay.textContent = player.togglePlayPause() ? '\u23F8' : '\u25B6';
+        var isNowPlaying = player.togglePlayPause();
+        btnPlay.textContent = isNowPlaying ? '\u23F8' : '\u25B6';
+        showActionIcon(isNowPlaying ? '\u25B6' : '\u23F8');
     });
 
     // Segmented speed control
@@ -320,18 +511,24 @@
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
         switch (e.code) {
             case 'Space':
-                e.preventDefault(); btnPlay.click(); break;
+                e.preventDefault();
+                var isNowPlaying = player.togglePlayPause();
+                btnPlay.textContent = isNowPlaying ? '\u23F8' : '\u25B6';
+                showActionIcon(isNowPlaying ? '\u25B6' : '\u23F8');
+                break;
             case 'ArrowLeft':
                 e.preventDefault();
                 var wl = player.playing;
                 player.seek(Math.max(0, player.currentMs - 10000));
                 if (wl) player.play();
+                showSeekIndicator('left');
                 break;
             case 'ArrowRight':
                 e.preventDefault();
                 var wr = player.playing;
                 player.seek(Math.min(player.totalMs, player.currentMs + 10000));
                 if (wr) player.play();
+                showSeekIndicator('right');
                 break;
             case 'Equal': case 'NumpadAdd':
                 e.preventDefault(); cycleSpeed(1); break;
@@ -345,4 +542,5 @@
     window.addEventListener('resize', function () { zoom.handleResize(); });
 
     init();
+    initNotes();
 })();

@@ -1,5 +1,5 @@
 // Teleport RDP Web Player — Downloader
-TPP.createDownloader = function(serverBase, rid) {
+TPP.createDownloader = function(serverBase, rid, cacheManager) {
     function buildUrl(act, filename, extraParams) {
         var params = new URLSearchParams(
             Object.assign({ act: act, type: 'rdp', rid: String(rid), f: filename }, extraParams || {})
@@ -41,11 +41,45 @@ TPP.createDownloader = function(serverBase, rid) {
     }
 
     function readFile(filename) {
+        // Try cache first
+        if (cacheManager) {
+            return cacheManager.getFromCache(filename).then(function (buf) {
+                if (buf) return buf;
+                return fetchAndCache(filename);
+            });
+        }
+        return fetchAndCache(filename);
+    }
+
+    function fetchAndCache(filename) {
         return fetchWithRetry(buildUrl('read', filename))
-            .then(function (resp) { return resp ? resp.arrayBuffer() : null; });
+            .then(function (resp) {
+                if (!resp) return null;
+                return resp.arrayBuffer();
+            })
+            .then(function (buf) {
+                if (buf && cacheManager) {
+                    cacheManager.putInCache(filename, buf).catch(function () { /* ignore cache errors */ });
+                }
+                return buf;
+            });
     }
 
     function readFileWithProgress(filename, onProgress) {
+        // Try cache first
+        if (cacheManager) {
+            return cacheManager.getFromCache(filename).then(function (buf) {
+                if (buf) {
+                    if (onProgress) onProgress(buf.byteLength, buf.byteLength);
+                    return buf;
+                }
+                return fetchWithProgressAndCache(filename, onProgress);
+            });
+        }
+        return fetchWithProgressAndCache(filename, onProgress);
+    }
+
+    function fetchWithProgressAndCache(filename, onProgress) {
         return getFileSize(filename).then(function (size) {
             return fetchWithRetry(buildUrl('read', filename)).then(function (resp) {
                 if (!resp) return null;
@@ -68,7 +102,11 @@ TPP.createDownloader = function(serverBase, rid) {
                         buf.set(chunks[i], offset);
                         offset += chunks[i].byteLength;
                     }
-                    return buf.buffer;
+                    var arrayBuf = buf.buffer;
+                    if (cacheManager) {
+                        cacheManager.putInCache(filename, arrayBuf).catch(function () {});
+                    }
+                    return arrayBuf;
                 });
             });
         });
