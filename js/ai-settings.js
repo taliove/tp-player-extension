@@ -24,7 +24,7 @@ TPP.createAISettings = function() {
     function save(settings) {
         var data = {};
         data[STORAGE_KEY] = settings;
-        return TPP.extBridge.storageSet({ data: data });
+        return TPP.extBridge.storageSet(data);
     }
 
     function update(partial) {

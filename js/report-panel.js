@@ -320,16 +320,18 @@ TPP.createReportPanel = function(opts) {
     }
 
     function setAutoAnalyze(checked) {
-        if (chkAuto) chkAuto.checked = checked;
+        if (chkAuto) chkAuto.classList.toggle('active', checked);
     }
 
     function getAutoAnalyze() {
-        return chkAuto ? chkAuto.checked : false;
+        return chkAuto ? chkAuto.classList.contains('active') : false;
     }
 
-    if (chkAuto) {
-        chkAuto.addEventListener('change', function() {
-            if (opts.onAutoChanged) opts.onAutoChanged(chkAuto.checked);
+    var aiAutoGroup = document.getElementById('ai-auto-group');
+    if (aiAutoGroup && chkAuto) {
+        aiAutoGroup.addEventListener('click', function() {
+            chkAuto.classList.toggle('active');
+            if (opts.onAutoChanged) opts.onAutoChanged(chkAuto.classList.contains('active'));
         });
     }
 

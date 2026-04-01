@@ -67,7 +67,7 @@ TPP.createPromptTemplates = function() {
     function saveCustom(templates) {
         var data = {};
         data[STORAGE_KEY] = templates;
-        return TPP.extBridge.storageSet({ data: data });
+        return TPP.extBridge.storageSet(data);
     }
 
     function getAll() {

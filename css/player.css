@@ -955,17 +955,17 @@ body > :not(#player-app):not(script) {
 
 .ai-btn-secondary:hover { background: var(--fill-secondary); }
 
-.ai-auto-label {
-    color: var(--text-tertiary);
-    font-size: 11px;
-    display: flex;
+.ai-auto-group {
+    display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
     cursor: pointer;
 }
 
-.ai-auto-label input[type="checkbox"] {
-    accent-color: var(--accent);
+.ai-auto-group span {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 400;
 }
 
 #ai-report-progress {
