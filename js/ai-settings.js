@@ -6,7 +6,7 @@ TPP.createAISettings = function() {
         protocol: 'claude',
         endpoint: 'https://api.anthropic.com',
         apiKey: '',
-        model: 'claude-sonnet-4-6-20250514',
+        model: 'claude-sonnet-4-6',
         autoAnalyze: false,
         endSegmentMinutes: 5,
         maxFrames: 80,

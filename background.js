@@ -2,6 +2,16 @@
 // VL API proxy: relays requests from content script to external VL APIs
 // Supports both Anthropic Claude API and OpenAI-compatible API
 
+// Debug: run testAPI('endpoint', 'key', 'model') in service worker console
+self.testAPI = function(endpoint, key, model) {
+    console.log('[BG] Testing:', endpoint, model);
+    callClaude(
+        { endpoint: endpoint, apiKey: key, model: model || 'claude-sonnet-4-6' },
+        [], 'say hi', '', 30000
+    ).then(function(r) { console.log('[BG] OK:', r.text); })
+     .catch(function(e) { console.error('[BG] FAIL:', e.message); });
+};
+
 chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
     if (message.type !== 'vl-analyze') return false;
     console.log('[BG] Received vl-analyze, protocol:', message.payload.config.protocol,
