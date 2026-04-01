@@ -144,7 +144,8 @@ function callOpenAI(config, images, prompt, systemPrompt, timeoutMs) {
 }
 
 function fetchWithTimeout(url, options, timeoutMs) {
-    console.log('[BG] Fetching:', url, 'timeout:', timeoutMs + 'ms');
+    var bodySize = options.body ? (options.body.length / 1024 / 1024).toFixed(1) : '0';
+    console.log('[BG] Fetching:', url, 'body:', bodySize + 'MB', 'timeout:', timeoutMs + 'ms');
     var controller = new AbortController();
     var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
     options.signal = controller.signal;

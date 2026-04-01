@@ -223,8 +223,8 @@ TPP.createAIAnalyzer = function(opts) {
         offCtx.fillRect(0, 0, screenWidth, screenHeight);
         var captureCache = TPP.createImageCache();
 
-        // Scaled export canvas — shrink to max 1280px wide for smaller base64
-        var scale = Math.min(1, 1280 / screenWidth);
+        // Scaled export canvas — shrink to max 1024px wide for smaller base64
+        var scale = Math.min(1, 1024 / screenWidth);
         var exportW = Math.round(screenWidth * scale);
         var exportH = Math.round(screenHeight * scale);
         var exportCanvas = (scale < 1) ? new OffscreenCanvas(exportW, exportH) : null;
@@ -274,7 +274,10 @@ TPP.createAIAnalyzer = function(opts) {
                 blobCanvas = offCanvas;
             }
 
-            return blobCanvas.convertToBlob({ type: 'image/jpeg', quality: 0.75 }).then(function(blob) {
+            return blobCanvas.convertToBlob({ type: 'image/jpeg', quality: 0.6 }).then(function(blob) {
+                if (frameIdx === 0) {
+                    console.log('[AI] Frame size: ' + (blob.size / 1024).toFixed(0) + 'KB, export: ' + exportW + 'x' + exportH);
+                }
                 return blobToBase64(blob);
             }).then(function(base64) {
                 results.push({
