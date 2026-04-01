@@ -2,6 +2,21 @@
 // VL API proxy: relays requests from content script to external VL APIs
 // Supports both Anthropic Claude API and OpenAI-compatible API
 
+// Self-test on install/startup
+chrome.runtime.onInstalled.addListener(function() {
+    console.log('[BG] Service worker installed, running connectivity self-test...');
+    fetch('https://maas-openapi.wanjiedata.com/api/anthropic/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': 'test', 'anthropic-version': '2023-06-01' },
+        body: '{"model":"claude-sonnet-4-6","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}'
+    }).then(function(r) {
+        console.log('[BG] Self-test response:', r.status, '(401=auth issue but network OK, 200=full OK)');
+    }).catch(function(e) {
+        console.error('[BG] Self-test FAILED - fetch error:', e.name, e.message);
+        console.error('[BG] This means the service worker cannot reach the API endpoint!');
+    });
+});
+
 // Debug: run testAPI('endpoint', 'key', 'model') in service worker console
 self.testAPI = function(endpoint, key, model) {
     console.log('[BG] Testing:', endpoint, model);
