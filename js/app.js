@@ -62,6 +62,14 @@
     var notes = TPP.createNotes(rid);
     var history = TPP.createHistory();
 
+    var aiSettings = TPP.createAISettings();
+    var promptTemplates = TPP.createPromptTemplates();
+    var reportCache = TPP.createReportCache();
+    var aiAnalyzer = null;
+    var reportPanel = null;
+    var allDataReady = false;
+    var downloadedFileCount = 0;
+
     var player = TPP.createPlayer(renderer, imageCache, {
         onProgress: function (cur, total) { updateProgressBar(cur, total); },
         onEnd: function () { btnPlay.textContent = '\u25B6'; },
@@ -317,6 +325,49 @@
         });
     }
 
+    function startAnalysis() {
+        if (!allDataReady || !aiAnalyzer) return;
+        reportPanel.showProgress();
+        reportPanel.updateProgress('loading', 0, 0);
+
+        aiAnalyzer.runAnalysis().then(function(report) {
+            reportPanel.renderReport(report);
+        }).catch(function(err) {
+            if (err.message === '\u5df2\u53d6\u6d88') {
+                reportPanel.showIdle();
+            } else {
+                console.error('AI analysis error:', err);
+                reportPanel.showIdle();
+                showToast('AI \u5206\u6790\u5931\u8d25: ' + err.message, 'warning');
+            }
+        });
+    }
+
+    function cancelAnalysis() {
+        if (aiAnalyzer) aiAnalyzer.cancel();
+    }
+
+    function initAIPanel() {
+        reportPanel = TPP.createReportPanel({
+            player: player,
+            rid: rid,
+            reportCache: reportCache,
+            aiSettings: aiSettings,
+            templates: promptTemplates,
+            onStartAnalysis: startAnalysis,
+            onCancelAnalysis: cancelAnalysis,
+            onAutoChanged: function(checked) {
+                aiSettings.update({ autoAnalyze: checked });
+            }
+        });
+
+        aiSettings.load().then(function(s) {
+            reportPanel.setAutoAnalyze(s.autoAnalyze);
+        });
+
+        reportPanel.loadCachedReport();
+    }
+
     // --- Info panel ---
     function updateInfoPanel(header) {
         if (!infoList) return;
@@ -382,6 +433,20 @@
             var header = ctx.header, keyframes = ctx.keyframes;
             var allPackets = [], corruptedRanges = [];
 
+            aiAnalyzer = TPP.createAIAnalyzer({
+                header: header,
+                keyframes: keyframes,
+                allPackets: allPackets,
+                player: player,
+                settings: aiSettings,
+                templates: promptTemplates,
+                reportCache: reportCache,
+                rid: rid,
+                onProgress: function(stage, current, total) {
+                    if (reportPanel) reportPanel.updateProgress(stage, current, total);
+                }
+            });
+
             if (header.datFileCount > 0) {
                 showLoading('\u6b63\u5728\u4e0b\u8f7d\u6570\u636e\u6587\u4ef6 1/' + header.datFileCount + '...', '');
                 return downloader.readFileWithProgress('tp-rdp-1.tpd', function (received, total) {
@@ -418,6 +483,19 @@
                     // Refresh cache status in info panel after cache write completes
                     setTimeout(function () { updateInfoPanel(); }, 500);
 
+                    downloadedFileCount = 1;
+                    if (header.datFileCount <= 1) {
+                        allDataReady = true;
+                        if (reportPanel) {
+                            reportPanel.setDataReady(true);
+                            reportPanel.setFrameEstimate(
+                                Math.min(TPP.AI_MAX_L1L3_FRAMES, Math.ceil(header.timeMs / TPP.AI_FALLBACK_INTERVAL_MS) + 10)
+                            );
+                        }
+                    } else if (reportPanel) {
+                        reportPanel.setDataReady(false, '\u6570\u636e\u4e0b\u8f7d\u4e2d... (1/' + header.datFileCount + ')');
+                    }
+
                     if (corruptedRanges.length > 0) {
                         showToast('\u68c0\u6d4b\u5230 ' + corruptedRanges.length + ' \u5904\u6570\u636e\u635f\u574f\uff0c\u5df2\u81ea\u52a8\u8df3\u8fc7', 'warning');
                     }
@@ -438,6 +516,23 @@
                                     player.updatePackets(allPackets, keyframes, header.timeMs);
                                     renderCorruptMarks(corruptedRanges, allPackets, header.timeMs);
                                     setTimeout(function () { updateInfoPanel(); }, 500);
+                                    downloadedFileCount = idx;
+                                    if (idx >= header.datFileCount) {
+                                        allDataReady = true;
+                                        if (reportPanel) {
+                                            reportPanel.setDataReady(true);
+                                            reportPanel.setFrameEstimate(
+                                                Math.min(TPP.AI_MAX_L1L3_FRAMES, Math.ceil(header.timeMs / TPP.AI_FALLBACK_INTERVAL_MS) + 10)
+                                            );
+                                            if (reportPanel.getAutoAnalyze()) {
+                                                reportPanel.loadCachedReport().then(function(hasCached) {
+                                                    if (!hasCached) startAnalysis();
+                                                });
+                                            }
+                                        }
+                                    } else if (reportPanel) {
+                                        reportPanel.setDataReady(false, '\u6570\u636e\u4e0b\u8f7d\u4e2d... (' + idx + '/' + header.datFileCount + ')');
+                                    }
                                 }).catch(function (err) {
                                     showToast('\u6570\u636e\u6587\u4ef6 ' + idx + ' \u52a0\u8f7d\u5931\u8d25: ' + err.message, 'warning');
                                 });
@@ -548,4 +643,5 @@
 
     init();
     initNotes();
+    initAIPanel();
 })();
