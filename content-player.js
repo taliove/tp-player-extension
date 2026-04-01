@@ -68,6 +68,7 @@
             extBase + 'lib/pako.min.js',
             extBase + 'lib/rle.js',
             extBase + 'js/constants.js',
+            extBase + 'js/ext-bridge.js',
             extBase + 'js/cache-manager.js',
             extBase + 'js/downloader.js',
             extBase + 'js/parser.js',
@@ -218,4 +219,40 @@
             + '</div>'
             + '<script>window.__TP_RID = "' + rid + '"; window.__TP_SERVER = location.origin;<\/script>';
     }
+    // --- Extension API Bridge (isolated world) ---
+    // Relays requests from main world scripts to Chrome extension APIs
+    window.addEventListener('message', function(event) {
+        if (event.source !== window) return;
+        if (!event.data || event.data.type !== '__tp_to_ext') return;
+        var msg = event.data;
+        var id = msg.id;
+
+        function respond(result, error) {
+            window.postMessage({
+                type: '__tp_from_ext',
+                id: id,
+                result: result,
+                error: error || null
+            }, '*');
+        }
+
+        var payload = msg.payload || {};
+        if (msg.action === 'storage-get') {
+            chrome.storage.local.get(payload.keys, function(data) {
+                respond(data);
+            });
+        } else if (msg.action === 'storage-set') {
+            chrome.storage.local.set(payload.data, function() {
+                respond(true);
+            });
+        } else if (msg.action === 'send-message') {
+            chrome.runtime.sendMessage(payload.msg).then(function(response) {
+                respond(response);
+            }).catch(function(err) {
+                respond(null, err.message);
+            });
+        } else {
+            respond(null, 'Unknown bridge action: ' + msg.action);
+        }
+    });
 })();
