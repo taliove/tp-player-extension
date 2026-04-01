@@ -71,6 +71,7 @@
             extBase + 'js/ext-bridge.js',
             extBase + 'js/ai-settings.js',
             extBase + 'js/prompt-templates.js',
+            extBase + 'js/report-cache.js',
             extBase + 'js/cache-manager.js',
             extBase + 'js/downloader.js',
             extBase + 'js/parser.js',
