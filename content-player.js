@@ -69,6 +69,7 @@
             extBase + 'lib/rle.js',
             extBase + 'js/constants.js',
             extBase + 'js/ext-bridge.js',
+            extBase + 'js/ai-settings.js',
             extBase + 'js/cache-manager.js',
             extBase + 'js/downloader.js',
             extBase + 'js/parser.js',
