@@ -216,11 +216,19 @@ TPP.createAIAnalyzer = function(opts) {
             return a.timestampSec - b.timestampSec;
         });
 
+        // Full-resolution decode canvas
         var offCanvas = new OffscreenCanvas(screenWidth, screenHeight);
         var offCtx = offCanvas.getContext('2d');
         offCtx.fillStyle = '#263f6f';
         offCtx.fillRect(0, 0, screenWidth, screenHeight);
         var captureCache = TPP.createImageCache();
+
+        // Scaled export canvas — shrink to max 1280px wide for smaller base64
+        var scale = Math.min(1, 1280 / screenWidth);
+        var exportW = Math.round(screenWidth * scale);
+        var exportH = Math.round(screenHeight * scale);
+        var exportCanvas = (scale < 1) ? new OffscreenCanvas(exportW, exportH) : null;
+        var exportCtx = exportCanvas ? exportCanvas.getContext('2d') : null;
 
         var results = [];
         var packetIdx = 0;
@@ -257,7 +265,16 @@ TPP.createAIAnalyzer = function(opts) {
 
             onProgress('capturing', frameIdx + 1, total);
 
-            return offCanvas.convertToBlob({ type: 'image/png' }).then(function(blob) {
+            // Scale down if needed, then export as JPEG (much smaller than PNG)
+            var blobCanvas;
+            if (exportCanvas) {
+                exportCtx.drawImage(offCanvas, 0, 0, exportW, exportH);
+                blobCanvas = exportCanvas;
+            } else {
+                blobCanvas = offCanvas;
+            }
+
+            return blobCanvas.convertToBlob({ type: 'image/jpeg', quality: 0.75 }).then(function(blob) {
                 return blobToBase64(blob);
             }).then(function(base64) {
                 results.push({

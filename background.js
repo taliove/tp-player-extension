@@ -38,7 +38,7 @@ function callClaude(config, images, prompt, systemPrompt, timeoutMs) {
             type: 'image',
             source: {
                 type: 'base64',
-                media_type: 'image/png',
+                media_type: 'image/jpeg',
                 data: images[i].base64
             }
         });
@@ -91,7 +91,7 @@ function callOpenAI(config, images, prompt, systemPrompt, timeoutMs) {
         content.push({
             type: 'image_url',
             image_url: {
-                url: 'data:image/png;base64,' + images[i].base64,
+                url: 'data:image/jpeg;base64,' + images[i].base64,
                 detail: 'high'
             }
         });
