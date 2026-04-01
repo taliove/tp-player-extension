@@ -187,7 +187,8 @@ TPP.createReportPanel = function(opts) {
         // Conclusion
         html += '<div class="ai-report-section">';
         html += '<div class="ai-report-section-title">\u7ed3\u8bba</div>';
-        var recClass = (report.recommendation || '').replace(/\//g, '');
+        var recMap = { '\u901a\u8fc7': 'pass', '\u5f85\u5b9a': 'pending', '\u4e0d\u901a\u8fc7': 'fail' };
+        var recClass = recMap[report.recommendation] || 'unknown';
         html += '<div class="ai-recommendation ai-rec-' + recClass + '">';
         html += '\u5efa\u8bae: ' + escapeHtml(report.recommendation || '-') + '</div>';
         html += '<div class="ai-conclusion">' + escapeHtml(report.conclusion || '') + '</div>';

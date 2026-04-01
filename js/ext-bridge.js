@@ -26,7 +26,7 @@ TPP.extBridge = (function() {
                 id: id,
                 action: action,
                 payload: payload
-            }, '*');
+            }, location.origin);
             setTimeout(function() {
                 if (pending[id]) {
                     delete pending[id];

@@ -1130,9 +1130,9 @@ body > :not(#player-app):not(script) {
     margin-bottom: 6px;
 }
 
-.ai-rec-通过 { color: var(--success); }
-.ai-rec-待定 { color: var(--warning); }
-.ai-rec-不通过 { color: var(--danger); }
+.ai-rec-pass { color: var(--success); }
+.ai-rec-pending { color: var(--warning); }
+.ai-rec-fail { color: var(--danger); }
 
 .ai-conclusion {
     font-size: 12px;

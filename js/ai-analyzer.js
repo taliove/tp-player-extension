@@ -56,7 +56,7 @@ TPP.createAIAnalyzer = function(opts) {
     }
 
     // --- Layer 1 + Layer 3 sample points ---
-    function computeSamplePoints(density, edges, totalMs, maxFrames) {
+    function computeSamplePoints(density, edges, totalMs, maxFrames, endSegmentMinutes) {
         var points = [];
         var usedSec = {};
 
@@ -92,8 +92,9 @@ TPP.createAIAnalyzer = function(opts) {
         }
 
         // Layer 3: end segment dense sampling
+        var endMinMs = (endSegmentMinutes || 5) * 60 * 1000;
         var endDurationMs = Math.max(
-            TPP.AI_END_SEGMENT_MIN_MS,
+            endMinMs,
             totalMs * TPP.AI_END_SEGMENT_RATIO
         );
         var endStartMs = Math.max(0, totalMs - endDurationMs);
@@ -200,11 +201,10 @@ TPP.createAIAnalyzer = function(opts) {
     }
 
     function blobToBase64(blob) {
-        return new Promise(function(resolve) {
+        return new Promise(function(resolve, reject) {
             var reader = new FileReader();
-            reader.onload = function() {
-                resolve(reader.result.split(',')[1]);
-            };
+            reader.onload = function() { resolve(reader.result.split(',')[1]); };
+            reader.onerror = function() { reject(reader.error || new Error('FileReader failed')); };
             reader.readAsDataURL(blob);
         });
     }
@@ -284,7 +284,11 @@ TPP.createAIAnalyzer = function(opts) {
         } catch (e) {
             var braceMatch = jsonStr.match(/\{[\s\S]*\}/);
             if (braceMatch) {
-                return JSON.parse(braceMatch[0]);
+                try {
+                    return JSON.parse(braceMatch[0]);
+                } catch (e2) {
+                    throw new Error('Failed to parse VL response JSON: ' + e2.message);
+                }
             }
             throw new Error('Failed to parse VL response JSON: ' + e.message);
         }
@@ -326,7 +330,7 @@ TPP.createAIAnalyzer = function(opts) {
             var density = computeActivityDensity(allPackets, header.timeMs);
             var edges = detectEdges(density);
             var maxL1L3 = Math.min(TPP.AI_MAX_L1L3_FRAMES, settings.maxFrames);
-            var samplePoints = computeSamplePoints(density, edges, header.timeMs, maxL1L3);
+            var samplePoints = computeSamplePoints(density, edges, header.timeMs, maxL1L3, settings.endSegmentMinutes);
 
             onProgress('capturing', 0, samplePoints.length);
             return batchCapture(samplePoints, allPackets, keyframes);

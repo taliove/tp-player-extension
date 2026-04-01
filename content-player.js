@@ -306,7 +306,7 @@
                 id: id,
                 result: result,
                 error: error || null
-            }, '*');
+            }, location.origin);
         }
 
         var payload = msg.payload || {};
