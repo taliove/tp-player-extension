@@ -58,7 +58,12 @@ function callClaude(config, images, prompt, systemPrompt, timeoutMs) {
         body.system = systemPrompt;
     }
 
-    return fetchWithTimeout(config.endpoint, {
+    var endpoint = config.endpoint.replace(/\/+$/, '');
+    if (endpoint.indexOf('/v1/messages') === -1) {
+        endpoint += '/v1/messages';
+    }
+
+    return fetchWithTimeout(endpoint, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -115,11 +120,11 @@ function callOpenAI(config, images, prompt, systemPrompt, timeoutMs) {
     };
 
     var endpoint = config.endpoint.replace(/\/+$/, '');
+    if (endpoint.indexOf('/v1/chat/completions') === -1) {
+        endpoint += '/v1/chat/completions';
+    }
 
     return fetchWithTimeout(endpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + config.apiKey
         },
         body: JSON.stringify(body)
