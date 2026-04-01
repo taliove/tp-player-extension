@@ -4,9 +4,14 @@
 
 chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
     if (message.type !== 'vl-analyze') return false;
+    console.log('[BG] Received vl-analyze, protocol:', message.payload.config.protocol,
+        'endpoint:', message.payload.config.endpoint,
+        'images:', message.payload.images.length);
     handleAnalyze(message.payload).then(function(result) {
+        console.log('[BG] Success, response length:', result.text.length);
         sendResponse({ success: true, data: result });
     }).catch(function(err) {
+        console.error('[BG] Error:', err.message);
         sendResponse({ success: false, error: err.message });
     });
     return true; // keep message channel open for async response
@@ -137,14 +142,17 @@ function callOpenAI(config, images, prompt, systemPrompt, timeoutMs) {
 }
 
 function fetchWithTimeout(url, options, timeoutMs) {
+    console.log('[BG] Fetching:', url, 'timeout:', timeoutMs + 'ms');
     var controller = new AbortController();
     var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
     options.signal = controller.signal;
     return fetch(url, options).then(function(resp) {
         clearTimeout(timer);
+        console.log('[BG] Response status:', resp.status);
         return resp;
     }).catch(function(err) {
         clearTimeout(timer);
+        console.error('[BG] Fetch error:', err.name, err.message);
         if (err.name === 'AbortError') throw new Error('API request timeout (' + (timeoutMs / 1000) + 's)');
         throw err;
     });
