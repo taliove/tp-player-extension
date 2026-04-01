@@ -45,6 +45,16 @@ TPP.extBridge = (function() {
         },
         sendMessage: function(msg, timeoutMs) {
             return send('send-message', { msg: msg }, timeoutMs || 180000);
+        },
+        fetchProxy: function(url, options, timeoutMs) {
+            var bridgeTimeout = (timeoutMs || 120000) + 15000;
+            return send('fetch-proxy', {
+                url: url,
+                method: options.method || 'POST',
+                headers: options.headers || {},
+                body: options.body || null,
+                timeoutMs: timeoutMs || 120000
+            }, bridgeTimeout);
         }
     };
 })();

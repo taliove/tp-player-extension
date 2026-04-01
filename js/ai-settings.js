@@ -49,22 +49,29 @@ TPP.createAISettings = function() {
     }
 
     function testConnection(settings) {
-        return TPP.extBridge.sendMessage({
-            type: 'vl-analyze',
-            payload: {
-                config: {
-                    protocol: settings.protocol,
-                    endpoint: settings.endpoint,
-                    apiKey: settings.apiKey,
-                    model: settings.model,
-                    timeoutMs: 15000
-                },
-                images: [],
-                prompt: 'Reply with just "OK" to confirm connection.',
-                systemPrompt: 'You are a connection test assistant.'
-            }
-        }).then(function(resp) {
-            if (!resp.success) throw new Error(resp.error);
+        var endpoint = (settings.endpoint || '').replace(/\/+$/, '');
+        if (settings.protocol === 'openai') {
+            if (endpoint.indexOf('/v1/chat/completions') === -1) endpoint += '/v1/chat/completions';
+        } else {
+            if (endpoint.indexOf('/v1/messages') === -1) endpoint += '/v1/messages';
+        }
+
+        var headers, body;
+        if (settings.protocol === 'openai') {
+            headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + settings.apiKey };
+            body = JSON.stringify({ model: settings.model || 'gpt-4o', max_tokens: 50,
+                messages: [{ role: 'user', content: 'say OK' }] });
+        } else {
+            headers = { 'Content-Type': 'application/json', 'x-api-key': settings.apiKey, 'anthropic-version': '2023-06-01' };
+            body = JSON.stringify({ model: settings.model || 'claude-sonnet-4-6', max_tokens: 50,
+                messages: [{ role: 'user', content: 'say OK' }] });
+        }
+
+        return TPP.extBridge.fetchProxy(endpoint, {
+            method: 'POST', headers: headers, body: body
+        }, 30000).then(function(resp) {
+            if (resp && resp.error) throw new Error(resp.error);
+            if (!resp || !resp.ok) throw new Error('HTTP ' + (resp ? resp.status : '?') + ': ' + (resp ? resp.text : ''));
             return { success: true, model: settings.model };
         });
     }

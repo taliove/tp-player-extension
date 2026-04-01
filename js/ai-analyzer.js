@@ -314,26 +314,72 @@ TPP.createAIAnalyzer = function(opts) {
         }
     }
 
+    function buildRequestBody(images, prompt, systemPrompt, settings) {
+        if (settings.protocol === 'openai') {
+            var content = [];
+            for (var i = 0; i < images.length; i++) {
+                content.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + images[i].base64, detail: 'high' } });
+                content.push({ type: 'text', text: '[' + formatTs(images[i].timestamp_sec) + '] ' + (images[i].label || '') });
+            }
+            content.push({ type: 'text', text: prompt });
+            var msgs = [];
+            if (systemPrompt) msgs.push({ role: 'system', content: systemPrompt });
+            msgs.push({ role: 'user', content: content });
+            return { body: JSON.stringify({ model: settings.model, max_tokens: 8192, messages: msgs }),
+                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + settings.apiKey } };
+        }
+        // Claude protocol
+        var content = [];
+        for (var i = 0; i < images.length; i++) {
+            content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: images[i].base64 } });
+            content.push({ type: 'text', text: '[' + formatTs(images[i].timestamp_sec) + '] ' + (images[i].label || '') });
+        }
+        content.push({ type: 'text', text: prompt });
+        var body = { model: settings.model || 'claude-sonnet-4-6', max_tokens: 8192, messages: [{ role: 'user', content: content }] };
+        if (systemPrompt) body.system = systemPrompt;
+        return { body: JSON.stringify(body),
+                 headers: { 'Content-Type': 'application/json', 'x-api-key': settings.apiKey, 'anthropic-version': '2023-06-01' } };
+    }
+
+    function formatTs(sec) {
+        var m = Math.floor(sec / 60), s = sec % 60;
+        return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    function parseAPIResponse(text, protocol) {
+        var data = JSON.parse(text);
+        if (protocol === 'openai') {
+            return { text: data.choices[0].message.content, usage: data.usage };
+        }
+        var t = '';
+        for (var i = 0; i < data.content.length; i++) {
+            if (data.content[i].type === 'text') t += data.content[i].text;
+        }
+        return { text: t, usage: data.usage };
+    }
+
     function callVL(images, prompt, systemPrompt, settings) {
         var apiTimeoutMs = (settings.apiTimeoutSec || 120) * 1000;
-        var bridgeTimeoutMs = apiTimeoutMs + 30000; // bridge timeout = API timeout + 30s buffer
-        return TPP.extBridge.sendMessage({
-            type: 'vl-analyze',
-            payload: {
-                config: {
-                    protocol: settings.protocol,
-                    endpoint: settings.endpoint,
-                    apiKey: settings.apiKey,
-                    model: settings.model,
-                    timeoutMs: apiTimeoutMs
-                },
-                images: images,
-                prompt: prompt,
-                systemPrompt: systemPrompt
+        var endpoint = (settings.endpoint || '').replace(/\/+$/, '');
+        if (settings.protocol === 'claude' && endpoint.indexOf('/v1/messages') === -1) {
+            endpoint += '/v1/messages';
+        } else if (settings.protocol === 'openai' && endpoint.indexOf('/v1/chat/completions') === -1) {
+            endpoint += '/v1/chat/completions';
+        }
+
+        var req = buildRequestBody(images, prompt, systemPrompt, settings);
+        console.log('[AI] callVL:', endpoint, 'images:', images.length, 'body:', (req.body.length / 1024 / 1024).toFixed(1) + 'MB');
+
+        return TPP.extBridge.fetchProxy(endpoint, {
+            method: 'POST',
+            headers: req.headers,
+            body: req.body
+        }, apiTimeoutMs).then(function(resp) {
+            if (resp && resp.error) throw new Error(resp.error);
+            if (!resp || !resp.ok) {
+                throw new Error('API ' + (resp ? resp.status : '?') + ': ' + (resp ? resp.text : 'no response'));
             }
-        }, bridgeTimeoutMs).then(function(resp) {
-            if (!resp.success) throw new Error(resp.error);
-            return resp.data;
+            return parseAPIResponse(resp.text, settings.protocol);
         });
     }
 

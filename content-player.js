@@ -319,6 +319,25 @@
             chrome.storage.local.set(payload.data, function() {
                 respond(true);
             });
+        } else if (msg.action === 'fetch-proxy') {
+            var controller = new AbortController();
+            var timer = setTimeout(function() { controller.abort(); }, payload.timeoutMs || 120000);
+            fetch(payload.url, {
+                method: payload.method || 'POST',
+                headers: payload.headers || {},
+                body: payload.body || null,
+                signal: controller.signal
+            }).then(function(resp) {
+                clearTimeout(timer);
+                return resp.text().then(function(text) {
+                    respond({ status: resp.status, ok: resp.ok, text: text });
+                });
+            }).catch(function(err) {
+                clearTimeout(timer);
+                respond(null, err.name === 'AbortError'
+                    ? 'API request timeout (' + ((payload.timeoutMs || 120000) / 1000) + 's)'
+                    : err.message);
+            });
         } else if (msg.action === 'send-message') {
             chrome.runtime.sendMessage(payload.msg).then(function(response) {
                 respond(response);
