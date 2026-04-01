@@ -295,6 +295,8 @@ TPP.createAIAnalyzer = function(opts) {
     }
 
     function callVL(images, prompt, systemPrompt, settings) {
+        var apiTimeoutMs = (settings.apiTimeoutSec || 120) * 1000;
+        var bridgeTimeoutMs = apiTimeoutMs + 30000; // bridge timeout = API timeout + 30s buffer
         return TPP.extBridge.sendMessage({
             type: 'vl-analyze',
             payload: {
@@ -303,13 +305,13 @@ TPP.createAIAnalyzer = function(opts) {
                     endpoint: settings.endpoint,
                     apiKey: settings.apiKey,
                     model: settings.model,
-                    timeoutMs: settings.apiTimeoutSec * 1000
+                    timeoutMs: apiTimeoutMs
                 },
                 images: images,
                 prompt: prompt,
                 systemPrompt: systemPrompt
             }
-        }).then(function(resp) {
+        }, bridgeTimeoutMs).then(function(resp) {
             if (!resp.success) throw new Error(resp.error);
             return resp.data;
         });

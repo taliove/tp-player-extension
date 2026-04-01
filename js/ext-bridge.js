@@ -17,7 +17,7 @@ TPP.extBridge = (function() {
         }
     });
 
-    function send(action, payload) {
+    function send(action, payload, timeoutMs) {
         return new Promise(function(resolve, reject) {
             var id = '__tp_' + (++idCounter) + '_' + Date.now();
             pending[id] = { resolve: resolve, reject: reject };
@@ -32,7 +32,7 @@ TPP.extBridge = (function() {
                     delete pending[id];
                     reject(new Error('Extension bridge timeout'));
                 }
-            }, 10000);
+            }, timeoutMs || 10000);
         });
     }
 
@@ -43,8 +43,8 @@ TPP.extBridge = (function() {
         storageSet: function(data) {
             return send('storage-set', { data: data });
         },
-        sendMessage: function(msg) {
-            return send('send-message', { msg: msg });
+        sendMessage: function(msg, timeoutMs) {
+            return send('send-message', { msg: msg }, timeoutMs || 180000);
         }
     };
 })();
