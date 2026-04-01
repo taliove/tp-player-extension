@@ -434,20 +434,34 @@ TPP.createReportPanel = function(opts) {
             }
             btnTest.textContent = '\u6d4b\u8bd5\u4e2d...';
             btnTest.disabled = true;
+            setTestResult('');
             opts.aiSettings.testConnection({
                 protocol: protocol,
                 endpoint: document.getElementById('ai-set-endpoint').value.trim(),
                 apiKey: document.getElementById('ai-set-apikey').value.trim(),
                 model: document.getElementById('ai-set-model').value.trim()
             }).then(function() {
-                showToastInPanel('\u8fde\u63a5\u6210\u529f \u2713');
+                setTestResult('\u2705 \u8fde\u63a5\u6210\u529f');
             }).catch(function(err) {
-                showToastInPanel('\u8fde\u63a5\u5931\u8d25: ' + err.message);
+                setTestResult('\u274c ' + err.message);
             }).then(function() {
                 btnTest.textContent = '\u6d4b\u8bd5\u8fde\u63a5';
                 btnTest.disabled = false;
             });
         });
+    }
+
+    function setTestResult(msg) {
+        var el = document.getElementById('ai-test-result');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'ai-test-result';
+            if (btnTest && btnTest.parentNode) {
+                btnTest.parentNode.appendChild(el);
+            }
+        }
+        el.textContent = msg;
+        el.className = 'ai-test-result-msg';
     }
 
     if (btnImport) {

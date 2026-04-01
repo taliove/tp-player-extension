@@ -1259,3 +1259,12 @@ body > :not(#player-app):not(script) {
     flex: 1;
     text-align: center;
 }
+
+.ai-test-result-msg {
+    font-size: 12px;
+    margin-top: 6px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: var(--fill-tertiary);
+    word-break: break-all;
+}
