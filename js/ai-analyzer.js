@@ -156,11 +156,131 @@ TPP.createAIAnalyzer = function(opts) {
         return points;
     }
 
+    // --- Independent OffscreenCanvas frame decoder ---
+    var screenWidth = header.width;
+    var screenHeight = header.height;
+
+    function processPacketToCanvas(pkt, ctx, cache) {
+        var dv = new DataView(pkt.buffer);
+        try {
+            if (pkt.type === TPP.TYPE_RDP_IMAGE) {
+                var images = TPP.parseImagePayload(dv, pkt.payloadOffset, pkt.size);
+                for (var i = 0; i < images.length; i++) {
+                    var img = images[i];
+                    if (img.format === TPP.RDP_IMG_ALT) {
+                        var cached = cache.get(img.cacheIndex);
+                        if (cached) {
+                            ctx.putImageData(
+                                new ImageData(cached.rgba, cached.width, cached.height),
+                                img.destLeft, img.destTop
+                            );
+                        }
+                    } else {
+                        var decoded = TPP.decodeImageTile(img);
+                        if (decoded) {
+                            var destW = img.destRight - img.destLeft + 1;
+                            var destH = img.destBottom - img.destTop + 1;
+                            cache.push({ rgba: decoded.rgba, width: destW, height: destH });
+                            ctx.putImageData(
+                                new ImageData(decoded.rgba, destW, destH),
+                                img.destLeft, img.destTop
+                            );
+                        }
+                    }
+                }
+            } else if (pkt.type === TPP.TYPE_RDP_KEYFRAME) {
+                cache.clear();
+                var kf = TPP.parseKeyframePayload(dv, pkt.payloadOffset, pkt.size);
+                var rgba = TPP.decodeKeyframe(kf.data, screenWidth, screenHeight);
+                ctx.putImageData(new ImageData(rgba, screenWidth, screenHeight), 0, 0);
+            }
+        } catch (err) {
+            console.warn('[AI Analyzer] Packet decode error at', pkt.timeMs + 'ms:', err);
+        }
+    }
+
+    function blobToBase64(blob) {
+        return new Promise(function(resolve) {
+            var reader = new FileReader();
+            reader.onload = function() {
+                resolve(reader.result.split(',')[1]);
+            };
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    function batchCapture(samplePoints, packets, kfs) {
+        if (samplePoints.length === 0) return Promise.resolve([]);
+
+        var sorted = samplePoints.slice().sort(function(a, b) {
+            return a.timestampSec - b.timestampSec;
+        });
+
+        var offCanvas = new OffscreenCanvas(screenWidth, screenHeight);
+        var offCtx = offCanvas.getContext('2d');
+        offCtx.fillStyle = '#263f6f';
+        offCtx.fillRect(0, 0, screenWidth, screenHeight);
+        var captureCache = TPP.createImageCache();
+
+        var results = [];
+        var packetIdx = 0;
+
+        // Seek to keyframe nearest to first sample point
+        var firstTargetMs = sorted[0].timestampSec * 1000;
+        for (var k = kfs.length - 1; k >= 0; k--) {
+            if (kfs[k].timeMs <= firstTargetMs) {
+                var kfTimeMs = kfs[k].timeMs;
+                var lo = 0, hi = packets.length;
+                while (lo < hi) {
+                    var mid = (lo + hi) >>> 1;
+                    if (packets[mid].timeMs < kfTimeMs) lo = mid + 1; else hi = mid;
+                }
+                packetIdx = lo;
+                break;
+            }
+        }
+
+        var frameIdx = 0;
+        var total = sorted.length;
+
+        function captureNext() {
+            if (cancelled) return Promise.reject(new Error('已取消'));
+            if (frameIdx >= total) return Promise.resolve(results);
+
+            var point = sorted[frameIdx];
+            var targetMs = point.timestampSec * 1000;
+
+            while (packetIdx < packets.length && packets[packetIdx].timeMs <= targetMs) {
+                processPacketToCanvas(packets[packetIdx], offCtx, captureCache);
+                packetIdx++;
+            }
+
+            onProgress('capturing', frameIdx + 1, total);
+
+            return offCanvas.convertToBlob({ type: 'image/png' }).then(function(blob) {
+                return blobToBase64(blob);
+            }).then(function(base64) {
+                results.push({
+                    base64: base64,
+                    timestamp_sec: point.timestampSec,
+                    label: point.label
+                });
+                frameIdx++;
+                return new Promise(function(resolve) {
+                    setTimeout(function() { resolve(captureNext()); }, 0);
+                });
+            });
+        }
+
+        return captureNext();
+    }
+
     return {
         computeActivityDensity: computeActivityDensity,
         detectEdges: detectEdges,
         computeSamplePoints: computeSamplePoints,
         computeLayer2Points: computeLayer2Points,
+        batchCapture: batchCapture,
         cancel: function() { cancelled = true; }
     };
 };
