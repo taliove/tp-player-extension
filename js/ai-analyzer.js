@@ -275,12 +275,154 @@ TPP.createAIAnalyzer = function(opts) {
         return captureNext();
     }
 
+    // --- Two-round VL analysis orchestration ---
+    function parseVLResponse(text) {
+        var jsonMatch = text.match(/```json\s*([\s\S]*?)```/);
+        var jsonStr = jsonMatch ? jsonMatch[1].trim() : text.trim();
+        try {
+            return JSON.parse(jsonStr);
+        } catch (e) {
+            var braceMatch = jsonStr.match(/\{[\s\S]*\}/);
+            if (braceMatch) {
+                return JSON.parse(braceMatch[0]);
+            }
+            throw new Error('Failed to parse VL response JSON: ' + e.message);
+        }
+    }
+
+    function callVL(images, prompt, systemPrompt, settings) {
+        return TPP.extBridge.sendMessage({
+            type: 'vl-analyze',
+            payload: {
+                config: {
+                    protocol: settings.protocol,
+                    endpoint: settings.endpoint,
+                    apiKey: settings.apiKey,
+                    model: settings.model,
+                    timeoutMs: settings.apiTimeoutSec * 1000
+                },
+                images: images,
+                prompt: prompt,
+                systemPrompt: systemPrompt
+            }
+        }).then(function(resp) {
+            if (!resp.success) throw new Error(resp.error);
+            return resp.data;
+        });
+    }
+
+    function runAnalysis() {
+        cancelled = false;
+        var settings, tplId, l1l3Frames, round1Result;
+
+        onProgress('loading', 0, 0);
+
+        return aiSettings.load().then(function(s) {
+            settings = s;
+            tplId = s.currentTemplate;
+            if (!s.apiKey) throw new Error('请先配置 API Key');
+
+            onProgress('scanning', 0, 0);
+            var density = computeActivityDensity(allPackets, header.timeMs);
+            var edges = detectEdges(density);
+            var maxL1L3 = Math.min(TPP.AI_MAX_L1L3_FRAMES, settings.maxFrames);
+            var samplePoints = computeSamplePoints(density, edges, header.timeMs, maxL1L3);
+
+            onProgress('capturing', 0, samplePoints.length);
+            return batchCapture(samplePoints, allPackets, keyframes);
+        }).then(function(frames) {
+            if (cancelled) throw new Error('已取消');
+            l1l3Frames = frames;
+
+            onProgress('round1', 0, 0);
+            return templates.buildPrompt(tplId, false);
+        }).then(function(prompt) {
+            return callVL(l1l3Frames, prompt, templates.SYSTEM_PROMPT, settings);
+        }).then(function(vlResult) {
+            if (cancelled) throw new Error('已取消');
+            round1Result = parseVLResponse(vlResult.text);
+
+            var needMore = round1Result.need_more_frames;
+            if (!needMore || needMore.length === 0) {
+                return round1Result;
+            }
+
+            onProgress('layer2', 0, 0);
+            var l2Points = computeLayer2Points(needMore, header.timeMs, TPP.AI_MAX_L2_FRAMES);
+            if (l2Points.length === 0) return round1Result;
+
+            return batchCapture(l2Points, allPackets, keyframes).then(function(l2Frames) {
+                if (cancelled) throw new Error('已取消');
+
+                onProgress('round2', 0, 0);
+                var round1Summary = round1Result.summary + '\n评分: ' + round1Result.score
+                    + '\n建议: ' + round1Result.recommendation;
+                return templates.buildPrompt(tplId, true, round1Summary).then(function(prompt) {
+                    return callVL(l2Frames, prompt, templates.SYSTEM_PROMPT, settings);
+                });
+            }).then(function(vlResult2) {
+                var round2Result = parseVLResponse(vlResult2.text);
+                return mergeReports(round1Result, round2Result);
+            });
+        }).then(function(finalReport) {
+            if (cancelled) throw new Error('已取消');
+
+            onProgress('saving', 0, 0);
+            return reportCache.put(rid, finalReport).then(function() {
+                onProgress('done', 0, 0);
+                return finalReport;
+            });
+        });
+    }
+
+    function mergeReports(round1, round2) {
+        var merged = Object.assign({}, round1);
+
+        if (round2.score) merged.score = round2.score;
+        if (round2.summary) merged.summary = round2.summary;
+        if (round2.recommendation) merged.recommendation = round2.recommendation;
+        if (round2.conclusion) merged.conclusion = round2.conclusion;
+        if (round2.test_result) merged.test_result = round2.test_result;
+
+        if (round2.timeline && round2.timeline.length > 0) {
+            var existingTimes = {};
+            for (var i = 0; i < merged.timeline.length; i++) {
+                existingTimes[merged.timeline[i].timestamp_sec] = true;
+            }
+            for (var j = 0; j < round2.timeline.length; j++) {
+                if (!existingTimes[round2.timeline[j].timestamp_sec]) {
+                    merged.timeline.push(round2.timeline[j]);
+                }
+            }
+            merged.timeline.sort(function(a, b) { return a.timestamp_sec - b.timestamp_sec; });
+        }
+
+        if (round2.dimensions && round2.dimensions.length > 0) {
+            var dimMap = {};
+            for (var d = 0; d < merged.dimensions.length; d++) {
+                dimMap[merged.dimensions[d].name] = d;
+            }
+            for (var e = 0; e < round2.dimensions.length; e++) {
+                var dim = round2.dimensions[e];
+                if (dimMap[dim.name] !== undefined) {
+                    merged.dimensions[dimMap[dim.name]] = dim;
+                } else {
+                    merged.dimensions.push(dim);
+                }
+            }
+        }
+
+        delete merged.need_more_frames;
+        return merged;
+    }
+
     return {
         computeActivityDensity: computeActivityDensity,
         detectEdges: detectEdges,
         computeSamplePoints: computeSamplePoints,
         computeLayer2Points: computeLayer2Points,
         batchCapture: batchCapture,
+        runAnalysis: runAnalysis,
         cancel: function() { cancelled = true; }
     };
 };
