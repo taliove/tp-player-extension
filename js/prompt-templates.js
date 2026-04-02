@@ -4,7 +4,15 @@ TPP.createPromptTemplates = function() {
 
     var SYSTEM_PROMPT = '你是一个技术面试评审专家。你将看到一组来自候选人远程桌面操作录像的关键帧截图，'
         + '每张标注了时间戳。候选人在 Windows 桌面上使用 IDE 完成编程题目。'
-        + '请严格按照指定的 JSON 格式输出分析结果。';
+        + '请严格按照指定的 JSON 格式输出分析结果。\n\n'
+        + '【作弊检测】请特别注意以下可疑行为：\n'
+        + '1. 屏幕出现大面积蓝色/反色选中高亮（疑似 Ctrl+A 全选代码或题目）\n'
+        + '2. 窗口切换痕迹（任务栏变化、Alt+Tab 切换器、桌面闪烁）\n'
+        + '3. 代码区域突然出现大段文本而非逐行输入（疑似从外部粘贴）\n'
+        + '4. 浏览器窗口中出现 AI 工具页面（ChatGPT、Claude、文心一言等）\n'
+        + '5. 在 IDE 外的编辑器或记事本中操作\n'
+        + '如发现疑似作弊行为，请在 timeline 中对应条目的 activity 字段添加 "[疑似作弊]" 前缀，'
+        + '并在 detail 中说明具体证据。';
 
     var OUTPUT_FORMAT = '\n\n请严格按以下 JSON 格式输出（不要输出其他内容）：\n'
         + '```json\n'
@@ -97,10 +105,18 @@ TPP.createPromptTemplates = function() {
         });
     }
 
-    function buildPrompt(templateId, isRound2, round1Summary) {
+    function buildPrompt(templateId, isRound2, round1Summary, examContext) {
         return getAll().then(function(all) {
             var tpl = all[templateId] || all['backend'];
-            var prompt = '以下是候选人远程桌面操作录像的关键帧截图，按时间顺序排列。\n\n' + tpl.focus;
+            var prompt = '以下是候选人远程桌面操作录像的关键帧截图，按时间顺序排列。\n\n';
+            if (examContext) {
+                prompt += '【机试信息】\n';
+                if (examContext.topic) prompt += '题目: ' + examContext.topic + '\n';
+                if (examContext.role) prompt += '岗位: ' + examContext.role + '\n';
+                if (examContext.username) prompt += '候选人: ' + examContext.username + '\n';
+                prompt += '\n';
+            }
+            prompt += tpl.focus;
             if (isRound2 && round1Summary) {
                 prompt += '\n\n以下是第一轮分析的结果摘要，请结合补充帧完善分析：\n' + round1Summary;
                 prompt += '\n\n本轮不需要输出 need_more_frames 字段。';

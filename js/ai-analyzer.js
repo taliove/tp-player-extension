@@ -10,6 +10,7 @@ TPP.createAIAnalyzer = function(opts) {
     var rid = opts.rid;
     var onProgress = opts.onProgress || function() {};
     var cancelled = false;
+    var lastSamplePoints = null;
 
     // --- Activity density scanning ---
     function computeActivityDensity(packets, totalMs) {
@@ -55,12 +56,40 @@ TPP.createAIAnalyzer = function(opts) {
         return edges;
     }
 
+    // --- Suspicious spike detection (potential copy-paste cheating) ---
+    function detectSuspiciousSpikes(density) {
+        var windowMs = TPP.AI_WINDOW_MS;
+        var spikes = [];
+        for (var i = 2; i < density.length; i++) {
+            var prevAvg = (density[i - 2] + density[i - 1]) / 2;
+            var curr = density[i];
+            // Sudden jump from low to very high activity
+            if (prevAvg < 0.15 && curr > 0.7) {
+                spikes.push({ windowIndex: i, timeMs: i * windowMs });
+            }
+        }
+        return spikes;
+    }
+
     // --- Layer 1 + Layer 3 sample points ---
-    function computeSamplePoints(density, edges, totalMs, maxFrames, endSegmentMinutes) {
+    function computeSamplePoints(density, edges, totalMs, maxFrames, endSegmentMinutes, skipStartSec, suspiciousSpikes) {
         var points = [];
         var usedSec = {};
 
+        // Smart skip strategy based on video duration
+        var totalMin = totalMs / 60000;
+        var effectiveSkipSec;
+        if (totalMin < 10) {
+            effectiveSkipSec = 0; // Short video: don't skip
+        } else if (totalMin < 30) {
+            effectiveSkipSec = Math.round(totalMs * 0.10 / 1000); // Skip first 10%
+        } else {
+            effectiveSkipSec = Math.min(skipStartSec || 300, Math.round(totalMs * 0.15 / 1000)); // Skip up to 15% or configured max
+        }
+        var skipStartMs = effectiveSkipSec * 1000;
+
         function addPoint(timeMs, label) {
+            if (timeMs < skipStartMs && timeMs > 0) return;
             var sec = Math.round(timeMs / 1000);
             if (sec < 0) sec = 0;
             if (sec > Math.floor(totalMs / 1000)) sec = Math.floor(totalMs / 1000);
@@ -69,8 +98,8 @@ TPP.createAIAnalyzer = function(opts) {
             points.push({ timestampSec: sec, label: label });
         }
 
-        // First frame
-        addPoint(0, '录像开始');
+        // First meaningful frame (after skip period)
+        addPoint(skipStartMs, '录像开始');
 
         // Layer 1: edge-based sampling
         for (var i = 0; i < edges.length; i++) {
@@ -79,6 +108,16 @@ TPP.createAIAnalyzer = function(opts) {
                 addPoint(e.timeMs, '活动开始');
             } else {
                 addPoint(e.timeMs + TPP.AI_EDGE_SETTLE_MS, '活动结束');
+            }
+        }
+
+        // Suspicious spikes (potential copy-paste): sample before and after
+        if (suspiciousSpikes) {
+            for (var si = 0; si < suspiciousSpikes.length; si++) {
+                var spike = suspiciousSpikes[si];
+                addPoint(spike.timeMs - 3000, '可疑活动前');
+                addPoint(spike.timeMs, '可疑活动');
+                addPoint(spike.timeMs + 5000, '可疑活动后');
             }
         }
 
@@ -223,8 +262,9 @@ TPP.createAIAnalyzer = function(opts) {
         offCtx.fillRect(0, 0, screenWidth, screenHeight);
         var captureCache = TPP.createImageCache();
 
-        // Scaled export canvas — shrink to max 1024px wide for smaller base64
-        var scale = Math.min(1, 1024 / screenWidth);
+        // Scaled export canvas — shrink to max width for smaller base64
+        var maxExportW = TPP.AI_EXPORT_MAX_WIDTH || 1024;
+        var scale = Math.min(1, maxExportW / screenWidth);
         var exportW = Math.round(screenWidth * scale);
         var exportH = Math.round(screenHeight * scale);
         var exportCanvas = (scale < 1) ? new OffscreenCanvas(exportW, exportH) : null;
@@ -274,7 +314,7 @@ TPP.createAIAnalyzer = function(opts) {
                 blobCanvas = offCanvas;
             }
 
-            return blobCanvas.convertToBlob({ type: 'image/jpeg', quality: 0.6 }).then(function(blob) {
+            return blobCanvas.convertToBlob({ type: 'image/jpeg', quality: TPP.AI_JPEG_QUALITY || 0.6 }).then(function(blob) {
                 if (frameIdx === 0) {
                     console.log('[AI] Frame size: ' + (blob.size / 1024).toFixed(0) + 'KB, export: ' + exportW + 'x' + exportH);
                 }
@@ -297,20 +337,24 @@ TPP.createAIAnalyzer = function(opts) {
 
     // --- Two-round VL analysis orchestration ---
     function parseVLResponse(text) {
+        // Try ```json code block first
         var jsonMatch = text.match(/```json\s*([\s\S]*?)```/);
         var jsonStr = jsonMatch ? jsonMatch[1].trim() : text.trim();
         try {
             return JSON.parse(jsonStr);
         } catch (e) {
+            // Try to find any JSON object in the text
             var braceMatch = jsonStr.match(/\{[\s\S]*\}/);
             if (braceMatch) {
                 try {
                     return JSON.parse(braceMatch[0]);
                 } catch (e2) {
-                    throw new Error('Failed to parse VL response JSON: ' + e2.message);
+                console.error('[AI] parseVLResponse failed. Response length:', text.length);
+                    throw new Error('AI 返回的 JSON 解析失败: ' + e2.message);
                 }
             }
-            throw new Error('Failed to parse VL response JSON: ' + e.message);
+            console.error('[AI] parseVLResponse: no JSON found. Response length:', text.length);
+            throw new Error('AI 返回内容不包含有效 JSON');
         }
     }
 
@@ -368,7 +412,7 @@ TPP.createAIAnalyzer = function(opts) {
         }
 
         var req = buildRequestBody(images, prompt, systemPrompt, settings);
-        console.log('[AI] callVL:', endpoint, 'images:', images.length, 'body:', (req.body.length / 1024 / 1024).toFixed(1) + 'MB');
+        console.log('[AI] callVL: images:', images.length, 'body:', (req.body.length / 1024 / 1024).toFixed(1) + 'MB');
 
         return TPP.extBridge.fetchProxy(endpoint, {
             method: 'POST',
@@ -385,7 +429,10 @@ TPP.createAIAnalyzer = function(opts) {
 
     function runAnalysis() {
         cancelled = false;
-        var settings, tplId, l1l3Frames, round1Result;
+        lastSamplePoints = null;
+        var settings, tplId, l1l3Frames, round1Result, examContext;
+        var totalTokens = { input: 0, output: 0 };
+        var analysisStartTime = Date.now();
 
         onProgress('loading', 0, 0);
 
@@ -393,12 +440,22 @@ TPP.createAIAnalyzer = function(opts) {
             settings = s;
             tplId = s.currentTemplate;
             if (!s.apiKey) throw new Error('请先配置 API Key');
-
+        }).catch(function(err) {
+            if (err.message && err.message.indexOf('invalidated') >= 0) {
+                throw new Error('扩展已重新加载，请刷新页面');
+            }
+            throw err;
+        }).then(function() {
             onProgress('scanning', 0, 0);
             var density = computeActivityDensity(allPackets, header.timeMs);
             var edges = detectEdges(density);
+            var spikes = detectSuspiciousSpikes(density);
+            if (spikes.length > 0) {
+                console.log('[AI] Detected ' + spikes.length + ' suspicious activity spikes');
+            }
             var maxL1L3 = Math.min(TPP.AI_MAX_L1L3_FRAMES, settings.maxFrames);
-            var samplePoints = computeSamplePoints(density, edges, header.timeMs, maxL1L3, settings.endSegmentMinutes);
+            var samplePoints = computeSamplePoints(density, edges, header.timeMs, maxL1L3, settings.endSegmentMinutes, settings.skipStartSec, spikes);
+            lastSamplePoints = samplePoints;
 
             onProgress('capturing', 0, samplePoints.length);
             return batchCapture(samplePoints, allPackets, keyframes);
@@ -407,11 +464,24 @@ TPP.createAIAnalyzer = function(opts) {
             l1l3Frames = frames;
 
             onProgress('round1', 0, 0);
-            return templates.buildPrompt(tplId, false);
+            examContext = null;
+            if (window.__TP_HOST_INFO && window.__TP_HOST_INFO.parsed) {
+                examContext = {
+                    topic: window.__TP_HOST_INFO.parsed.topic,
+                    role: window.__TP_HOST_INFO.parsed.role,
+                    username: header.userUsername
+                };
+            }
+            return templates.buildPrompt(tplId, false, null, examContext);
         }).then(function(prompt) {
             return callVL(l1l3Frames, prompt, templates.SYSTEM_PROMPT, settings);
         }).then(function(vlResult) {
             if (cancelled) throw new Error('已取消');
+            // Accumulate token usage
+            if (vlResult.usage) {
+                totalTokens.input += vlResult.usage.input_tokens || vlResult.usage.prompt_tokens || 0;
+                totalTokens.output += vlResult.usage.output_tokens || vlResult.usage.completion_tokens || 0;
+            }
             round1Result = parseVLResponse(vlResult.text);
 
             var needMore = round1Result.need_more_frames;
@@ -429,18 +499,37 @@ TPP.createAIAnalyzer = function(opts) {
                 onProgress('round2', 0, 0);
                 var round1Summary = round1Result.summary + '\n评分: ' + round1Result.score
                     + '\n建议: ' + round1Result.recommendation;
-                return templates.buildPrompt(tplId, true, round1Summary).then(function(prompt) {
+                return templates.buildPrompt(tplId, true, round1Summary, examContext).then(function(prompt) {
                     return callVL(l2Frames, prompt, templates.SYSTEM_PROMPT, settings);
                 });
             }).then(function(vlResult2) {
+                // Accumulate round 2 tokens
+                if (vlResult2.usage) {
+                    totalTokens.input += vlResult2.usage.input_tokens || vlResult2.usage.prompt_tokens || 0;
+                    totalTokens.output += vlResult2.usage.output_tokens || vlResult2.usage.completion_tokens || 0;
+                }
                 var round2Result = parseVLResponse(vlResult2.text);
                 return mergeReports(round1Result, round2Result);
             });
         }).then(function(finalReport) {
             if (cancelled) throw new Error('已取消');
 
+            // Attach analysis metadata
+            finalReport._meta = {
+                model: settings.model,
+                tokens: totalTokens,
+                durationMs: Date.now() - analysisStartTime,
+                frames: (l1l3Frames ? l1l3Frames.length : 0),
+                timestamp: new Date().toISOString()
+            };
+
             onProgress('saving', 0, 0);
             return reportCache.put(rid, finalReport).then(function() {
+                onProgress('done', 0, 0);
+                return finalReport;
+            }).catch(function(err) {
+                // Cache save failure is non-critical, still return the report
+                console.warn('[AI] Failed to cache report:', err.message);
                 onProgress('done', 0, 0);
                 return finalReport;
             });
@@ -495,6 +584,7 @@ TPP.createAIAnalyzer = function(opts) {
         computeLayer2Points: computeLayer2Points,
         batchCapture: batchCapture,
         runAnalysis: runAnalysis,
-        cancel: function() { cancelled = true; }
+        cancel: function() { cancelled = true; },
+        getSamplePoints: function() { return lastSamplePoints; }
     };
 };

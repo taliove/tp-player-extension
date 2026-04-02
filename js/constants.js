@@ -1,6 +1,11 @@
 // Teleport RDP Web Player — Constants
 var TPP = {};
 
+TPP.escapeHtml = function(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+};
+
 TPP.MAGIC_TPPR = 0x52505054;
 TPP.HEADER_VER = 4;
 TPP.TPPR_TYPE_RDP = 0x0101;
@@ -40,3 +45,6 @@ TPP.AI_MAX_TOTAL_FRAMES = 40;
 TPP.AI_API_TIMEOUT_MS = 300000;
 TPP.AI_DENSITY_THRESHOLD = 0.3;
 TPP.AI_EDGE_SETTLE_MS = 3000;
+TPP.AI_SKIP_START_SEC = 300;
+TPP.AI_EXPORT_MAX_WIDTH = 800;
+TPP.AI_JPEG_QUALITY = 0.4;

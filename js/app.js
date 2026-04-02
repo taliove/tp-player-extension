@@ -59,12 +59,14 @@
     var imageCache = TPP.createImageCache();
     var renderer = TPP.createRenderer(canvas);
     var zoom = TPP.createZoomController(canvasWrapper, canvasContainer, zoomDisplay);
+    window.__TP_ZOOM = zoom;
     var notes = TPP.createNotes(rid);
     var history = TPP.createHistory();
 
     var aiSettings = TPP.createAISettings();
     var promptTemplates = TPP.createPromptTemplates();
     var reportCache = TPP.createReportCache();
+    var hostResolver = TPP.createHostResolver(serverBase);
     var aiAnalyzer = null;
     var reportPanel = null;
     var allDataReady = false;
@@ -162,6 +164,54 @@
             mark.style.width = Math.max(0.5, ((endMs - startMs) / total) * 100) + '%';
             mark.title = '\u635f\u574f\u533a\u57df: ' + formatTime(startMs) + ' - ' + formatTime(endMs);
             progressBar.appendChild(mark);
+        }
+    }
+
+    // --- AI Keyframe markers on progress bar ---
+    var frameMarkerTooltip = null;
+
+    function clearFrameMarkers() {
+        progressBar.querySelectorAll('.frame-marker').forEach(function(el) { el.remove(); });
+        if (frameMarkerTooltip) { frameMarkerTooltip.remove(); frameMarkerTooltip = null; }
+    }
+
+    function renderFrameMarkers(samplePoints, totalMs) {
+        clearFrameMarkers();
+        if (!samplePoints || samplePoints.length === 0 || totalMs <= 0) return;
+
+        // Create shared tooltip
+        frameMarkerTooltip = document.createElement('div');
+        frameMarkerTooltip.className = 'frame-marker-tooltip';
+        progressContainer.appendChild(frameMarkerTooltip);
+
+        for (var i = 0; i < samplePoints.length; i++) {
+            (function(pt) {
+                var timeMs = pt.timestampSec * 1000;
+                var pct = (timeMs / totalMs) * 100;
+                var marker = document.createElement('div');
+                marker.className = 'frame-marker';
+                if (pt.label && pt.label.indexOf('\u53ef\u7591') >= 0) {
+                    marker.classList.add('suspicious');
+                }
+                marker.style.left = pct + '%';
+                marker.setAttribute('data-time', timeMs);
+                marker.setAttribute('data-label', pt.label || '');
+
+                marker.addEventListener('mouseenter', function(e) {
+                    frameMarkerTooltip.textContent = formatTime(timeMs) + (pt.label ? ' \u2014 ' + pt.label : '');
+                    frameMarkerTooltip.style.left = pct + '%';
+                    frameMarkerTooltip.classList.add('visible');
+                });
+                marker.addEventListener('mouseleave', function() {
+                    frameMarkerTooltip.classList.remove('visible');
+                });
+                marker.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    if (player) player.seek(timeMs);
+                });
+
+                progressBar.appendChild(marker);
+            })(samplePoints[i]);
         }
     }
 
@@ -273,7 +323,6 @@
 
     document.getElementById('menu-show-shortcuts').addEventListener('click', function () {
         closeAllMenus();
-        showShortcutHint();
     });
 
     // --- History panel ---
@@ -286,8 +335,8 @@
                 var div = document.createElement('div');
                 div.className = 'history-item' + (String(item.rid) === String(rid) ? ' current' : '');
                 div.innerHTML = ''
-                    + '<span class="history-item-user">' + (item.user || 'Unknown') + '</span>'
-                    + '<span class="history-item-meta">' + (item.duration || '') + ' | ' + (item.date || '') + '</span>';
+                    + '<span class="history-item-user">' + TPP.escapeHtml(item.user || 'Unknown') + '</span>'
+                    + '<span class="history-item-meta">' + TPP.escapeHtml(item.duration || '') + ' | ' + TPP.escapeHtml(item.date || '') + '</span>';
                 div.addEventListener('click', function () {
                     closeAllMenus();
                     if (String(item.rid) === String(rid)) return;
@@ -329,16 +378,20 @@
         if (!allDataReady || !aiAnalyzer) return;
         reportPanel.showProgress();
         reportPanel.updateProgress('loading', 0, 0);
+        clearFrameMarkers();
 
         aiAnalyzer.runAnalysis().then(function(report) {
+            if (!report || typeof report !== 'object') {
+                throw new Error('AI 返回了空结果');
+            }
             reportPanel.renderReport(report);
         }).catch(function(err) {
             if (err.message === '\u5df2\u53d6\u6d88') {
                 reportPanel.showIdle();
             } else {
-                console.error('AI analysis error:', err);
+                console.error('[AI] Analysis error:', err);
                 reportPanel.showIdle();
-                showToast('AI \u5206\u6790\u5931\u8d25: ' + err.message, 'warning');
+                showToast('AI \u5206\u6790\u5931\u8d25: ' + err.message, 'error');
             }
         });
     }
@@ -358,6 +411,26 @@
             onCancelAnalysis: cancelAnalysis,
             onAutoChanged: function(checked) {
                 aiSettings.update({ autoAnalyze: checked });
+            },
+            onReportRendered: function(report) {
+                // Render timeline markers from report (for cached reports without samplePoints)
+                var h = window.__TP_HEADER;
+                if (!h) return;
+                // Prefer analyzer's sample points if available (fresh analysis)
+                var pts = aiAnalyzer && aiAnalyzer.getSamplePoints();
+                if (pts && pts.length > 0) {
+                    renderFrameMarkers(pts, h.timeMs);
+                } else if (report.timeline && report.timeline.length > 0) {
+                    // Fallback: extract markers from report timeline
+                    var tlPts = [];
+                    for (var t = 0; t < report.timeline.length; t++) {
+                        var item = report.timeline[t];
+                        if (item.timestamp_sec !== undefined) {
+                            tlPts.push({ timestampSec: item.timestamp_sec, label: item.activity || '' });
+                        }
+                    }
+                    if (tlPts.length > 0) renderFrameMarkers(tlPts, h.timeMs);
+                }
             }
         });
 
@@ -380,11 +453,18 @@
         var cacheSize = cacheManager ? cacheManager.getCacheSize() : 0;
         var cacheSizeMB = (cacheSize / 1024 / 1024).toFixed(1);
         var cacheText = cacheSize > 0 ? '\u5df2\u7f13\u5b58 (' + cacheSizeMB + ' MB)' : '\u672a\u7f13\u5b58';
+        var hostInfo = window.__TP_HOST_INFO;
+        var hostHtml = '';
+        if (hostInfo && hostInfo.parsed.topic) {
+            hostHtml = '<div><span class="info-label">\u673a\u8bd5:</span>' + TPP.escapeHtml(hostInfo.parsed.topic)
+                + (hostInfo.parsed.role ? ' (' + TPP.escapeHtml(hostInfo.parsed.role) + ')' : '') + '</div>';
+        }
         infoList.innerHTML = ''
-            + '<div><span class="info-label">\u7528\u6237:</span>' + h.userUsername + '</div>'
+            + '<div><span class="info-label">\u7528\u6237:</span>' + TPP.escapeHtml(h.userUsername) + '</div>'
+            + hostHtml
             + '<div><span class="info-label">\u65f6\u957f:</span>' + formatTime(h.timeMs) + '</div>'
             + '<div><span class="info-label">\u5206\u8fa8\u7387:</span>' + h.width + ' \u00d7 ' + h.height + '</div>'
-            + '<div><span class="info-label">\u8fdc\u7a0b:</span>' + h.accUsername + '@' + h.hostIp + '</div>'
+            + '<div><span class="info-label">\u8fdc\u7a0b:</span>' + TPP.escapeHtml(h.accUsername) + '@' + TPP.escapeHtml(h.hostIp) + '</div>'
             + '<div><span class="info-label">\u7f13\u5b58:</span>' + cacheText + '</div>';
     }
 
@@ -404,14 +484,62 @@
             // Update menu meta
             menuMeta.textContent = header.userUsername + ' | ' + new Date(header.timestamp * 1000).toLocaleString('zh-CN');
 
+            // Resolve host info and update title/template
+            hostResolver.resolveByIp(header.hostIp).then(function(hostInfo) {
+                if (!hostInfo || !hostInfo.name) return;
+                var parsed = hostResolver.parseHostName(hostInfo.name);
+                window.__TP_HOST_INFO = { raw: hostInfo, parsed: parsed };
+
+                // Update page title with exam topic
+                var titleStr = hostResolver.formatTitle(parsed, header.userUsername);
+                document.title = 'RDP \u56de\u653e \u2014 ' + titleStr;
+
+                // Update menu meta
+                var metaParts = [header.userUsername];
+                if (parsed.topic) metaParts.push(parsed.topic);
+                if (parsed.role) metaParts.push(parsed.role);
+                metaParts.push(new Date(header.timestamp * 1000).toLocaleString('zh-CN'));
+                menuMeta.textContent = metaParts.join(' | ');
+
+                // Auto-select AI template based on role
+                var autoTemplate = hostResolver.detectTemplate(parsed.role);
+                if (autoTemplate) {
+                    aiSettings.load().then(function(s) {
+                        // Only auto-set if user hasn't manually changed it
+                        if (s.currentTemplate === 'backend' || !s._userSetTemplate) {
+                            aiSettings.update({ currentTemplate: autoTemplate });
+                        }
+                    });
+                }
+
+                // Update info panel with host name
+                updateInfoPanel();
+            }).catch(function() { /* ignore, non-critical */ });
+
             // Record to history
+            var historyUser = header.userUsername + ' (' + header.accUsername + ')';
             history.add({
                 rid: rid,
-                user: header.userUsername + ' (' + header.accUsername + ')',
+                user: historyUser,
                 duration: formatTime(header.timeMs),
                 date: new Date(header.timestamp * 1000).toLocaleDateString('zh-CN'),
                 timestamp: Date.now()
             });
+
+            // Update history with host info once resolved
+            hostResolver.resolveByIp(header.hostIp).then(function(hostInfo) {
+                if (!hostInfo || !hostInfo.name) return;
+                var parsed = hostResolver.parseHostName(hostInfo.name);
+                var enrichedUser = header.userUsername;
+                if (parsed.topic) enrichedUser += ' | ' + parsed.topic;
+                history.add({
+                    rid: rid,
+                    user: enrichedUser,
+                    duration: formatTime(header.timeMs),
+                    date: new Date(header.timestamp * 1000).toLocaleDateString('zh-CN'),
+                    timestamp: Date.now()
+                });
+            }).catch(function() {});
 
             // Update info panel
             updateInfoPanel(header);
@@ -477,8 +605,6 @@
                     hideOverlays();
                     player.play();
                     btnPlay.textContent = '\u23F8';
-
-                    showShortcutHint();
 
                     // Refresh cache status in info panel after cache write completes
                     setTimeout(function () { updateInfoPanel(); }, 500);
@@ -640,6 +766,81 @@
     // Retry & resize
     errorRetry.addEventListener('click', function () { init(); });
     window.addEventListener('resize', function () { zoom.handleResize(); });
+
+    // --- Sidebar toggle ---
+    var sidebar = document.getElementById('sidebar');
+    var mainContent = document.getElementById('main-content');
+    var btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
+    var btnSidebarExpand = document.getElementById('btn-sidebar-expand');
+    var resizeHandle = document.getElementById('sidebar-resize-handle');
+
+    function toggleSidebar(collapsed) {
+        sidebar.classList.toggle('collapsed', collapsed);
+        mainContent.classList.toggle('sidebar-collapsed', collapsed);
+        // Restore wide mode if AI tab is active when expanding
+        if (!collapsed) {
+            var activeTab = sidebar.querySelector('.sidebar-tab.active');
+            var isAI = activeTab && activeTab.getAttribute('data-tab') === 'ai-report';
+            sidebar.classList.toggle('wide', isAI);
+            // Restore saved width if user had custom-dragged
+            var sw = loadPrefs().sidebarWidth;
+            if (sw && isAI) {
+                sidebar.style.width = sw + 'px';
+            } else {
+                sidebar.style.width = '';
+            }
+        }
+        savePrefs({ sidebarCollapsed: collapsed });
+        setTimeout(function() { zoom.handleResize(); }, 280);
+    }
+
+    if (btnSidebarToggle) {
+        btnSidebarToggle.addEventListener('click', function() {
+            toggleSidebar(!sidebar.classList.contains('collapsed'));
+        });
+    }
+    if (btnSidebarExpand) {
+        btnSidebarExpand.addEventListener('click', function() {
+            toggleSidebar(false);
+        });
+    }
+
+    // --- Sidebar drag resize ---
+    if (resizeHandle) {
+        var dragState = null;
+        resizeHandle.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            dragState = { startX: e.clientX, startW: sidebar.offsetWidth };
+            sidebar.classList.add('resizing');
+            resizeHandle.classList.add('dragging');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!dragState) return;
+            var delta = dragState.startX - e.clientX;
+            var newW = Math.max(180, Math.min(window.innerWidth * 0.6, dragState.startW + delta));
+            sidebar.style.width = newW + 'px';
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (!dragState) return;
+            var finalW = sidebar.offsetWidth;
+            sidebar.classList.remove('resizing');
+            resizeHandle.classList.remove('dragging');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            dragState = null;
+            savePrefs({ sidebarWidth: finalW });
+            zoom.handleResize();
+        });
+    }
+
+    // Restore sidebar state
+    if (savedPrefs.sidebarCollapsed) {
+        toggleSidebar(true);
+    }
 
     init();
     initNotes();

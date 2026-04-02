@@ -11,6 +11,7 @@ TPP.createAISettings = function() {
         endSegmentMinutes: 5,
         maxFrames: 80,
         apiTimeoutSec: 120,
+        skipStartSec: 300,
         currentTemplate: 'backend'
     };
 

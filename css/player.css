@@ -6,7 +6,12 @@
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 /* === Reveal page once this stylesheet loads (pairs with inline visibility:hidden) === */
-html { visibility: visible !important; }
+html {
+    visibility: visible !important;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+}
 
 /* === Design Tokens === */
 :root {
@@ -40,7 +45,9 @@ body {
                  "Helvetica Neue", system-ui, sans-serif;
     display: flex;
     flex-direction: column;
+    width: 100%;
     height: 100vh;
+    margin: 0;
     overflow: hidden;
     user-select: none;
     -webkit-font-smoothing: antialiased;
@@ -240,6 +247,7 @@ body > :not(#player-app):not(script) {
     align-items: center;
     cursor: pointer;
     padding: 0 4px;
+    position: relative;
 }
 
 #progress-bar {
@@ -286,6 +294,60 @@ body > :not(#player-app):not(script) {
     top: 0;
     border-radius: var(--radius-pill);
     pointer-events: none;
+}
+
+/* === AI Keyframe Markers on Progress Bar === */
+.frame-marker {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: var(--accent);
+    border: 1.5px solid rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    z-index: 3;
+    transition: transform 0.15s, background 0.15s;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.frame-marker:hover {
+    transform: translate(-50%, -50%) scale(1.5);
+    background: var(--accent-hover);
+}
+
+.frame-marker.suspicious {
+    background: var(--warning);
+    border-color: rgba(255, 159, 10, 0.8);
+}
+
+.frame-marker.suspicious:hover {
+    background: #ffb340;
+}
+
+.frame-marker-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    transform: translateX(-50%);
+    background: var(--bg-elevated);
+    border: 0.5px solid var(--separator);
+    color: var(--text-primary);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 20;
+    margin-bottom: 6px;
+    box-shadow: var(--shadow-sm);
+}
+
+.frame-marker-tooltip.visible {
+    opacity: 1;
 }
 
 /* === Time Display === */
@@ -538,7 +600,7 @@ body > :not(#player-app):not(script) {
     100% { opacity: 0; }
 }
 
-/* === Shortcut Hint Bar === */
+/* === Shortcut Hint Bar (canvas overlay, auto-hide) === */
 #shortcut-hint {
     position: absolute;
     bottom: 12px;
@@ -572,6 +634,31 @@ body > :not(#player-app):not(script) {
 #shortcut-hint .hint-sep {
     margin: 0 6px;
     color: rgba(255, 255, 255, 0.25);
+}
+
+/* === Shortcut Bar (permanent, inside control-bar) === */
+#shortcut-bar {
+    text-align: center;
+    padding: 4px 0 0;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    border-top: 0.5px solid var(--separator);
+    margin-top: 8px;
+}
+
+#shortcut-bar kbd {
+    background: rgba(255, 255, 255, 0.08);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-family: inherit;
+    margin: 0 2px;
+    color: var(--text-secondary);
+}
+
+#shortcut-bar .hint-sep {
+    margin: 0 6px;
+    color: rgba(255, 255, 255, 0.15);
 }
 
 /* === Menu Bar === */
@@ -724,6 +811,33 @@ body > :not(#player-app):not(script) {
     overflow: hidden;
 }
 
+/* === Sidebar Resize Handle === */
+#sidebar-resize-handle {
+    width: 5px;
+    cursor: col-resize;
+    background: transparent;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 11;
+    margin-right: -5px;
+    transition: background 0.15s;
+}
+
+#sidebar-resize-handle:hover,
+#sidebar-resize-handle.dragging {
+    background: var(--accent);
+}
+
+#sidebar.collapsed ~ #sidebar-resize-handle,
+#sidebar.collapsed + #sidebar-resize-handle {
+    display: none;
+}
+
+/* Hide resize handle when sidebar is collapsed (handle is before sidebar in DOM) */
+#main-content.sidebar-collapsed #sidebar-resize-handle {
+    display: none;
+}
+
 /* === Sidebar === */
 #sidebar {
     width: 220px;
@@ -733,6 +847,85 @@ body > :not(#player-app):not(script) {
     flex-direction: column;
     flex-shrink: 0;
     overflow: hidden;
+    transition: width 0.25s ease, min-width 0.25s ease;
+}
+
+#sidebar.resizing {
+    transition: none;
+}
+
+#sidebar.wide {
+    width: 40%;
+    min-width: 360px;
+    max-width: 560px;
+}
+
+#sidebar.collapsed {
+    width: 0;
+    min-width: 0;
+    border-left: none;
+}
+
+#sidebar-header {
+    display: flex;
+    align-items: stretch;
+    flex-shrink: 0;
+    border-bottom: 0.5px solid var(--separator);
+}
+
+#sidebar-header #sidebar-tabs {
+    flex: 1;
+}
+
+.sidebar-toggle-btn {
+    width: 28px;
+    background: none;
+    border: none;
+    border-left: 0.5px solid var(--separator);
+    color: var(--text-tertiary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: color var(--transition), background var(--transition);
+    flex-shrink: 0;
+}
+
+.sidebar-toggle-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+#sidebar.collapsed .sidebar-toggle-btn {
+    transform: rotate(180deg);
+}
+
+/* Expand button shown when sidebar is collapsed */
+#btn-sidebar-expand {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 48px;
+    background: var(--bg-elevated);
+    border: 0.5px solid var(--separator);
+    border-right: none;
+    border-radius: 4px 0 0 4px;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    cursor: pointer;
+    z-index: 10;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+#btn-sidebar-expand:hover {
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+}
+
+#main-content.sidebar-collapsed #btn-sidebar-expand {
+    display: flex;
 }
 
 #sidebar-notes {
@@ -847,7 +1040,6 @@ body > :not(#player-app):not(script) {
 
 #sidebar-tabs {
     display: flex;
-    border-bottom: 0.5px solid var(--separator);
     flex-shrink: 0;
 }
 
@@ -900,6 +1092,72 @@ body > :not(#player-app):not(script) {
     flex-direction: column;
     flex: 1;
     min-height: 0;
+}
+
+/* --- Wide mode: report header --- */
+#sidebar.wide .ai-report-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    text-align: left;
+    padding: 14px 16px;
+}
+
+#sidebar.wide .ai-report-score {
+    font-size: 36px;
+    flex-shrink: 0;
+}
+
+#sidebar.wide .ai-report-summary {
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+#sidebar.wide .ai-report-exam {
+    margin-bottom: 0;
+}
+
+/* --- Wide mode: two-column dimensions grid --- */
+#sidebar.wide .ai-dimensions-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 16px;
+}
+
+/* --- Wide mode: timeline items tighter --- */
+#sidebar.wide .ai-timeline-item {
+    padding: 5px 0;
+}
+
+#sidebar.wide .ai-timeline-detail {
+    padding-left: 52px;
+}
+
+/* --- Wide mode: report actions --- */
+#sidebar.wide .ai-report-actions {
+    flex-wrap: nowrap;
+}
+
+#sidebar.wide .ai-report-actions .ai-btn-secondary {
+    font-size: 12px;
+    padding: 6px 12px;
+}
+
+/* --- Wide mode: result scrollable area --- */
+#sidebar.wide #ai-report-result {
+    padding: 4px 6px;
+}
+
+/* --- Wide mode: settings form two-column --- */
+#sidebar.wide .ai-settings-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 12px;
+}
+
+#sidebar.wide .ai-settings-form > .ai-settings-radio,
+#sidebar.wide .ai-settings-form > .ai-settings-key-row {
+    grid-column: 1 / -1;
 }
 
 #ai-report-idle {
@@ -1022,6 +1280,25 @@ body > :not(#player-app):not(script) {
     margin-bottom: 10px;
 }
 
+.ai-report-exam {
+    margin-bottom: 8px;
+}
+
+.ai-report-exam-topic {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.ai-report-exam-role {
+    font-size: 11px;
+    color: var(--accent);
+    margin-left: 6px;
+    padding: 1px 8px;
+    background: rgba(10, 132, 255, 0.12);
+    border-radius: 10px;
+}
+
 .ai-report-score {
     font-size: 28px;
     font-weight: 700;
@@ -1032,6 +1309,17 @@ body > :not(#player-app):not(script) {
     color: var(--text-secondary);
     font-size: 12px;
     margin-top: 4px;
+}
+
+.ai-report-meta {
+    margin-top: 8px;
+    font-size: 10px;
+    color: var(--text-tertiary);
+}
+
+.ai-report-meta .meta-sep {
+    margin: 0 5px;
+    opacity: 0.4;
 }
 
 .ai-report-section {

@@ -74,6 +74,7 @@
             extBase + 'js/report-cache.js',
             extBase + 'js/ai-analyzer.js',
             extBase + 'js/report-panel.js',
+            extBase + 'js/host-resolver.js',
             extBase + 'js/cache-manager.js',
             extBase + 'js/downloader.js',
             extBase + 'js/parser.js',
@@ -135,7 +136,7 @@
             + '      <div class="menu-item" id="menu-help">'
             + '        <span class="menu-label">\u5e2e\u52a9</span>'
             + '        <div class="menu-dropdown" id="dropdown-help">'
-            + '          <div class="menu-option" id="menu-show-shortcuts">\u5feb\u6377\u952e\u8bf4\u660e</div>'
+            + '          <div class="menu-option" id="menu-show-shortcuts">\u5feb\u6377\u952e\u8bf4\u660e \u2714</div>'
             + '        </div>'
             + '      </div>'
             + '    </div>'
@@ -159,7 +160,7 @@
             + '        <button id="error-retry">\u91cd\u8bd5</button>'
             + '      </div>'
             + '      <div id="action-overlay"></div>'
-            + '      <div id="shortcut-hint">'
+            + '      <div id="shortcut-hint" class="hidden">'
             + '        <kbd>Space</kbd> \u6682\u505c/\u64ad\u653e'
             + '        <span class="hint-sep">|</span>'
             + '        <kbd>\u2190 \u2192</kbd> \u5feb\u9000/\u5feb\u8fdb 10s'
@@ -167,12 +168,17 @@
             + '        <kbd>+/-</kbd> \u53d8\u901f'
             + '      </div>'
             + '    </div>'
+            + '    <button id="btn-sidebar-expand" title="\u5c55\u5f00\u4fa7\u680f">\u276e</button>'
             // --- Sidebar ---
+            + '    <div id="sidebar-resize-handle"></div>'
             + '    <div id="sidebar">'
-            + '      <div id="sidebar-tabs">'
-            + '        <button class="sidebar-tab active" data-tab="notes">\u7b14\u8bb0</button>'
-            + '        <button class="sidebar-tab" data-tab="info">\u4fe1\u606f</button>'
-            + '        <button class="sidebar-tab" data-tab="ai-report">AI \u62a5\u544a</button>'
+            + '      <div id="sidebar-header">'
+            + '        <div id="sidebar-tabs">'
+            + '          <button class="sidebar-tab active" data-tab="notes">\u7b14\u8bb0</button>'
+            + '          <button class="sidebar-tab" data-tab="info">\u4fe1\u606f</button>'
+            + '          <button class="sidebar-tab" data-tab="ai-report">AI \u62a5\u544a</button>'
+            + '        </div>'
+            + '        <button id="btn-sidebar-toggle" class="sidebar-toggle-btn" title="\u6536\u8d77\u4fa7\u680f">\u276f</button>'
             + '      </div>'
             + '      <div id="sidebar-panels">'
             + '        <div id="panel-notes" class="sidebar-panel active">'
@@ -233,6 +239,8 @@
             + '              <div class="ai-settings-form">'
             + '                <label class="ai-settings-label">\u672b\u6bb5\u5bc6\u91c7\u65f6\u957f (\u5206\u949f)</label>'
             + '                <input type="number" id="ai-set-end-minutes" class="ai-settings-input" min="1" max="30" value="5">'
+            + '                <label class="ai-settings-label">\u8df3\u8fc7\u5f00\u5934 (\u79d2)</label>'
+            + '                <input type="number" id="ai-set-skip-start" class="ai-settings-input" min="0" max="600" value="300">'
             + '                <label class="ai-settings-label">\u6700\u5927\u91c7\u5e27\u6570</label>'
             + '                <input type="number" id="ai-set-max-frames" class="ai-settings-input" min="10" max="200" value="80">'
             + '                <label class="ai-settings-label">API \u8d85\u65f6 (\u79d2)</label>'
@@ -288,6 +296,13 @@
             + '        <button id="btn-original" class="text-btn" title="\u539f\u59cb\u5927\u5c0f">1:1</button>'
             + '      </div>'
             + '    </div>'
+            + '    <div id="shortcut-bar">'
+            + '      <kbd>Space</kbd> \u6682\u505c/\u64ad\u653e'
+            + '      <span class="hint-sep">|</span>'
+            + '      <kbd>\u2190 \u2192</kbd> \u5feb\u9000/\u5feb\u8fdb 10s'
+            + '      <span class="hint-sep">|</span>'
+            + '      <kbd>+/-</kbd> \u53d8\u901f'
+            + '    </div>'
             + '  </div>'
             + '  <div id="toast-container"></div>'
             + '</div>'
@@ -310,42 +325,82 @@
             }, location.origin);
         }
 
+        // Guard: if extension was reloaded, chrome.runtime becomes invalid
+        if (!chrome.runtime || !chrome.runtime.id) {
+            respond(null, 'Extension context invalidated — please refresh the page');
+            return;
+        }
+
         var payload = msg.payload || {};
-        if (msg.action === 'storage-get') {
-            chrome.storage.local.get(payload.keys, function(data) {
-                respond(data);
-            });
-        } else if (msg.action === 'storage-set') {
-            chrome.storage.local.set(payload.data, function() {
-                respond(true);
-            });
-        } else if (msg.action === 'fetch-proxy') {
-            var controller = new AbortController();
-            var timer = setTimeout(function() { controller.abort(); }, payload.timeoutMs || 120000);
-            fetch(payload.url, {
-                method: payload.method || 'POST',
-                headers: payload.headers || {},
-                body: payload.body || null,
-                signal: controller.signal
-            }).then(function(resp) {
-                clearTimeout(timer);
-                return resp.text().then(function(text) {
-                    respond({ status: resp.status, ok: resp.ok, text: text });
+        try {
+            if (msg.action === 'storage-get') {
+                chrome.storage.local.get(payload.keys, function(data) {
+                    if (chrome.runtime.lastError) {
+                        respond(null, chrome.runtime.lastError.message);
+                    } else {
+                        respond(data);
+                    }
                 });
-            }).catch(function(err) {
-                clearTimeout(timer);
-                respond(null, err.name === 'AbortError'
-                    ? 'API request timeout (' + ((payload.timeoutMs || 120000) / 1000) + 's)'
-                    : err.message);
-            });
-        } else if (msg.action === 'send-message') {
-            chrome.runtime.sendMessage(payload.msg).then(function(response) {
-                respond(response);
-            }).catch(function(err) {
-                respond(null, err.message);
-            });
-        } else {
-            respond(null, 'Unknown bridge action: ' + msg.action);
+            } else if (msg.action === 'storage-set') {
+                // Only allow known storage keys
+                var allowedKeys = ['tp_ai_settings', 'tp_report_cache'];
+                var keys = Object.keys(payload.data || {});
+                for (var ak = 0; ak < keys.length; ak++) {
+                    if (allowedKeys.indexOf(keys[ak]) < 0) {
+                        respond(null, 'Blocked: storage key "' + keys[ak] + '" not in allowlist');
+                        return;
+                    }
+                }
+                chrome.storage.local.set(payload.data, function() {
+                    if (chrome.runtime.lastError) {
+                        respond(null, chrome.runtime.lastError.message);
+                    } else {
+                        respond(true);
+                    }
+                });
+            } else if (msg.action === 'fetch-proxy') {
+                // Validate URL: only allow known AI API hosts and same-origin
+                var allowedHosts = ['api.anthropic.com', 'api.openai.com'];
+                var fetchUrl;
+                try { fetchUrl = new URL(payload.url); } catch(e) { respond(null, 'Invalid URL'); return; }
+                var isSameOrigin = fetchUrl.origin === location.origin;
+                var isAllowedHost = allowedHosts.indexOf(fetchUrl.hostname) >= 0;
+                var isCustomEndpoint = fetchUrl.pathname.indexOf('/v1/messages') >= 0
+                    || fetchUrl.pathname.indexOf('/v1/chat/completions') >= 0;
+                if (!isSameOrigin && !isAllowedHost && !isCustomEndpoint) {
+                    respond(null, 'Blocked: URL host not in allowlist');
+                    return;
+                }
+
+                var controller = new AbortController();
+                var timer = setTimeout(function() { controller.abort(); }, payload.timeoutMs || 120000);
+                fetch(payload.url, {
+                    method: payload.method || 'POST',
+                    headers: payload.headers || {},
+                    body: payload.body || null,
+                    signal: controller.signal
+                }).then(function(resp) {
+                    clearTimeout(timer);
+                    return resp.text().then(function(text) {
+                        respond({ status: resp.status, ok: resp.ok, text: text });
+                    });
+                }).catch(function(err) {
+                    clearTimeout(timer);
+                    respond(null, err.name === 'AbortError'
+                        ? 'API request timeout (' + ((payload.timeoutMs || 120000) / 1000) + 's)'
+                        : err.message);
+                });
+            } else if (msg.action === 'send-message') {
+                chrome.runtime.sendMessage(payload.msg).then(function(response) {
+                    respond(response);
+                }).catch(function(err) {
+                    respond(null, err.message);
+                });
+            } else {
+                respond(null, 'Unknown bridge action: ' + msg.action);
+            }
+        } catch (e) {
+            respond(null, 'Bridge error: ' + e.message);
         }
     });
 })();

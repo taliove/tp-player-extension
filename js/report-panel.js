@@ -5,6 +5,7 @@ TPP.createReportPanel = function(opts) {
     var reportCache = opts.reportCache;
     var onStartAnalysis = opts.onStartAnalysis;
     var onCancelAnalysis = opts.onCancelAnalysis;
+    var onReportRendered = opts.onReportRendered;
 
     // --- DOM refs ---
     var tabs = document.querySelectorAll('.sidebar-tab');
@@ -21,6 +22,8 @@ TPP.createReportPanel = function(opts) {
     var frameEstimate = document.getElementById('ai-frame-estimate');
 
     // --- Tab switching ---
+    var sidebar = document.getElementById('sidebar');
+
     for (var i = 0; i < tabs.length; i++) {
         (function(tab) {
             tab.addEventListener('click', function() {
@@ -30,6 +33,26 @@ TPP.createReportPanel = function(opts) {
                 var targetId = 'panel-' + tab.getAttribute('data-tab');
                 var targetPanel = document.getElementById(targetId);
                 if (targetPanel) targetPanel.classList.add('active');
+
+                // Expand sidebar for AI report, shrink for others
+                var isAI = tab.getAttribute('data-tab') === 'ai-report';
+                if (sidebar) {
+                    sidebar.classList.toggle('wide', isAI);
+                    // Restore user-dragged width for AI, clear for narrow tabs
+                    var sw = null;
+                    try { sw = JSON.parse(localStorage.getItem('tp_player_prefs') || '{}').sidebarWidth; } catch(e) {}
+                    if (isAI && sw) {
+                        sidebar.style.width = sw + 'px';
+                    } else {
+                        sidebar.style.width = '';
+                    }
+                    // Re-fit canvas after sidebar transition
+                    setTimeout(function() {
+                        if (window.__TP_ZOOM && window.__TP_ZOOM.handleResize) {
+                            window.__TP_ZOOM.handleResize();
+                        }
+                    }, 280);
+                }
             });
         })(tabs[i]);
     }
@@ -81,22 +104,39 @@ TPP.createReportPanel = function(opts) {
         done: '分析完成'
     };
 
+    // Weighted stage progress (total = 100%)
+    var STAGE_WEIGHT = {
+        loading:   { start: 0,  end: 2  },
+        scanning:  { start: 2,  end: 5  },
+        capturing: { start: 5,  end: 30 },
+        round1:    { start: 30, end: 60 },
+        layer2:    { start: 60, end: 70 },
+        round2:    { start: 70, end: 95 },
+        saving:    { start: 95, end: 100 },
+        done:      { start: 100, end: 100 }
+    };
+
     function updateProgress(stage, current, total) {
         showProgress();
         var label = STAGE_LABELS[stage] || stage;
-        if (total > 0) {
+        var w = STAGE_WEIGHT[stage] || { start: 0, end: 0 };
+        var pct;
+
+        if (total > 0 && current > 0) {
+            // Interpolate within stage's weight range
+            pct = w.start + (w.end - w.start) * (current / total);
             label += ' (' + current + '/' + total + ')';
-            if (progressBar) {
-                progressBar.style.width = Math.round(current / total * 100) + '%';
-                progressBar.classList.remove('indeterminate');
-            }
         } else {
-            if (progressBar) {
-                progressBar.style.width = '';
-                progressBar.classList.add('indeterminate');
-            }
+            pct = w.start;
         }
-        if (progressText) progressText.textContent = label;
+
+        pct = Math.round(Math.min(100, Math.max(0, pct)));
+
+        if (progressBar) {
+            progressBar.style.width = pct + '%';
+            progressBar.classList.remove('indeterminate');
+        }
+        if (progressText) progressText.textContent = pct + '% — ' + label;
     }
 
     // --- Report rendering ---
@@ -121,8 +161,34 @@ TPP.createReportPanel = function(opts) {
 
         // Score header
         html += '<div class="ai-report-header">';
+        // Show exam context if available
+        if (window.__TP_HOST_INFO && window.__TP_HOST_INFO.parsed) {
+            var p = window.__TP_HOST_INFO.parsed;
+            if (p.topic || p.role) {
+                html += '<div class="ai-report-exam">';
+                if (p.topic) html += '<span class="ai-report-exam-topic">' + escapeHtml(p.topic) + '</span>';
+                if (p.role) html += '<span class="ai-report-exam-role">' + escapeHtml(p.role) + '</span>';
+                html += '</div>';
+            }
+        }
         html += '<div class="ai-report-score">' + escapeHtml(report.score || '-') + '</div>';
         html += '<div class="ai-report-summary">' + escapeHtml(report.summary || '') + '</div>';
+        // Analysis metadata
+        if (report._meta) {
+            var m = report._meta;
+            var dur = m.durationMs ? Math.round(m.durationMs / 1000) + 's' : '-';
+            var tokIn = m.tokens ? (m.tokens.input || 0) : 0;
+            var tokOut = m.tokens ? (m.tokens.output || 0) : 0;
+            html += '<div class="ai-report-meta">';
+            html += '<span title="模型">' + escapeHtml(m.model || '-') + '</span>';
+            html += '<span class="meta-sep">\u00b7</span>';
+            html += '<span title="耗时">' + dur + '</span>';
+            html += '<span class="meta-sep">\u00b7</span>';
+            html += '<span title="Token 消耗">' + tokIn.toLocaleString() + ' in / ' + tokOut.toLocaleString() + ' out</span>';
+            html += '<span class="meta-sep">\u00b7</span>';
+            html += '<span title="采帧数">' + (m.frames || '-') + ' 帧</span>';
+            html += '</div>';
+        }
         html += '</div>';
 
         // Test result
@@ -163,6 +229,7 @@ TPP.createReportPanel = function(opts) {
         if (report.dimensions && report.dimensions.length > 0) {
             html += '<div class="ai-report-section">';
             html += '<div class="ai-report-section-title">\u8be6\u7ec6\u8bc4\u4f30</div>';
+            html += '<div class="ai-dimensions-grid">';
             for (var d = 0; d < report.dimensions.length; d++) {
                 var dim = report.dimensions[d];
                 html += '<div class="ai-dimension">';
@@ -181,10 +248,9 @@ TPP.createReportPanel = function(opts) {
                 }
                 html += '</div>';
             }
-            html += '</div>';
+            html += '</div>'; // close ai-dimensions-grid
+            html += '</div>'; // close ai-report-section
         }
-
-        // Conclusion
         html += '<div class="ai-report-section">';
         html += '<div class="ai-report-section-title">\u7ed3\u8bba</div>';
         var recMap = { '\u901a\u8fc7': 'pass', '\u5f85\u5b9a': 'pending', '\u4e0d\u901a\u8fc7': 'fail' };
@@ -222,8 +288,11 @@ TPP.createReportPanel = function(opts) {
         if (btnCopy) {
             btnCopy.addEventListener('click', function() {
                 var markdown = reportToMarkdown(report);
-                navigator.clipboard.writeText(markdown).then(function() {
+                if (!markdown) { showToastInPanel('\u62a5\u544a\u5185\u5bb9\u4e3a\u7a7a'); return; }
+                copyToClipboard(markdown).then(function() {
                     showToastInPanel('\u5df2\u590d\u5236\u5230\u526a\u8d34\u677f');
+                }).catch(function(err) {
+                    showToastInPanel('\u590d\u5236\u5931\u8d25: ' + err.message);
                 });
             });
         }
@@ -250,6 +319,11 @@ TPP.createReportPanel = function(opts) {
                 if (onStartAnalysis) onStartAnalysis();
             });
         }
+
+        // Notify parent that report is rendered (for progress bar markers etc.)
+        if (onReportRendered) {
+            try { onReportRendered(report); } catch(e) { console.warn('[ReportPanel] onReportRendered error:', e); }
+        }
     }
 
     function escapeHtml(str) {
@@ -259,8 +333,24 @@ TPP.createReportPanel = function(opts) {
 
     function reportToMarkdown(report) {
         var md = '# AI \u8bc4\u4f30\u62a5\u544a\n\n';
+        if (window.__TP_HOST_INFO && window.__TP_HOST_INFO.parsed) {
+            var p = window.__TP_HOST_INFO.parsed;
+            if (p.topic) md += '**\u673a\u8bd5\u9898\u76ee:** ' + p.topic + '\n';
+            if (p.role) md += '**\u5c97\u4f4d:** ' + p.role + '\n';
+        }
+        if (window.__TP_HEADER) {
+            md += '**\u5019\u9009\u4eba:** ' + window.__TP_HEADER.userUsername + '\n';
+        }
         md += '**\u7efc\u5408\u8bc4\u5206:** ' + (report.score || '-') + '\n';
-        md += '**\u603b\u7ed3:** ' + (report.summary || '') + '\n\n';
+        md += '**\u603b\u7ed3:** ' + (report.summary || '') + '\n';
+        if (report._meta) {
+            var m = report._meta;
+            md += '**\u6a21\u578b:** ' + (m.model || '-');
+            md += ' | **\u8017\u65f6:** ' + (m.durationMs ? Math.round(m.durationMs / 1000) + 's' : '-');
+            md += ' | **Token:** ' + ((m.tokens ? m.tokens.input : 0) || 0) + ' in / ' + ((m.tokens ? m.tokens.output : 0) || 0) + ' out';
+            md += ' | **\u91c7\u5e27:** ' + (m.frames || '-') + '\n';
+        }
+        md += '\n';
 
         if (report.test_result) {
             md += '## \u6d4b\u8bd5\u7ed3\u679c\n';
@@ -291,6 +381,34 @@ TPP.createReportPanel = function(opts) {
         md += '**\u5efa\u8bae:** ' + (report.recommendation || '-') + '\n\n';
         md += report.conclusion || '';
         return md;
+    }
+
+    function copyToClipboard(text) {
+        // Try modern Clipboard API first, fallback to execCommand
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            return navigator.clipboard.writeText(text).catch(function() {
+                return execCommandCopy(text);
+            });
+        }
+        return execCommandCopy(text);
+    }
+
+    function execCommandCopy(text) {
+        return new Promise(function(resolve, reject) {
+            var textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                var ok = document.execCommand('copy');
+                document.body.removeChild(textarea);
+                if (ok) resolve(); else reject(new Error('\u526a\u8d34\u677f\u4e0d\u53ef\u7528'));
+            } catch (e) {
+                document.body.removeChild(textarea);
+                reject(e);
+            }
+        });
     }
 
     function showToastInPanel(msg) {
@@ -369,6 +487,7 @@ TPP.createReportPanel = function(opts) {
             document.getElementById('ai-set-apikey').value = s.apiKey;
             document.getElementById('ai-set-model').value = s.model;
             document.getElementById('ai-set-end-minutes').value = s.endSegmentMinutes;
+            document.getElementById('ai-set-skip-start').value = s.skipStartSec;
             document.getElementById('ai-set-max-frames').value = s.maxFrames;
             document.getElementById('ai-set-timeout').value = s.apiTimeoutSec;
 
@@ -409,6 +528,7 @@ TPP.createReportPanel = function(opts) {
                 model: document.getElementById('ai-set-model').value.trim(),
                 currentTemplate: document.getElementById('ai-set-template').value,
                 endSegmentMinutes: parseInt(document.getElementById('ai-set-end-minutes').value, 10) || 5,
+                skipStartSec: parseInt(document.getElementById('ai-set-skip-start').value, 10) || 60,
                 maxFrames: parseInt(document.getElementById('ai-set-max-frames').value, 10) || 80,
                 apiTimeoutSec: parseInt(document.getElementById('ai-set-timeout').value, 10) || 120
             }).then(function() {
