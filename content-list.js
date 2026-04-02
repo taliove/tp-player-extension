@@ -78,6 +78,31 @@
 
     var DURATION_THRESHOLD_MIN = 58;
     var NOTES_KEY = 'tp_player_notes';
+    var hostNameCache = {};
+
+    // --- Host name resolver (standalone, no TPP dependency) ---
+    function fetchHostNames() {
+        return fetch('/asset/get-hosts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: ''
+        }).then(function(resp) { return resp.json(); })
+        .then(function(data) {
+            if (data.code === 0 && data.data && data.data.data) {
+                for (var i = 0; i < data.data.data.length; i++) {
+                    var h = data.data.data[i];
+                    if (h.ip && h.name) hostNameCache[h.ip] = h.name;
+                }
+            }
+        }).catch(function() { /* non-critical */ });
+    }
+
+    function parseHostNameStr(name) {
+        if (!name) return null;
+        var match = name.match(/^(.+?)\s*[（(](.+?)[）)]\s*(?:-\s*\d+)?$/);
+        if (match) return { topic: match[1].trim(), role: match[2].trim() };
+        return { topic: name.replace(/-\s*\d+$/, '').trim(), role: '' };
+    }
 
     // --- Duration parsing ---
     function parseDurationText(text) {
@@ -168,6 +193,12 @@
         var replayBtn = cells[9] ? cells[9].querySelector('a[data-action="replay"]') : null;
         var recordId = replayBtn ? replayBtn.getAttribute('data-record-id') : null;
 
+        // Extract host IP from remote connection cell (index 4): "user@ip:port"
+        var remoteText = cells[4] ? cells[4].textContent.trim() : '';
+        var hostIp = '';
+        var ipMatch = remoteText.match(/@([^:]+)/);
+        if (ipMatch) hostIp = ipMatch[1];
+
         if (!recordId) {
             var idCell = cells[0];
             recordId = idCell ? idCell.textContent.trim() : null;
@@ -185,6 +216,7 @@
             isActive: isActive,
             recordId: recordId,
             durationRaw: durationText,
+            hostIp: hostIp,
         };
     }
 
@@ -199,6 +231,17 @@
         if (noteData && noteData.tag) {
             var tagLabels = { pass: '通过', fail: '不通过', pending: '待定' };
             tagHtml = '<span class="tp-card-tag ' + noteData.tag + '">' + tagLabels[noteData.tag] + '</span>';
+        }
+
+        // Host name / exam topic
+        var examHtml = '';
+        if (data.hostIp && hostNameCache[data.hostIp]) {
+            var parsed = parseHostNameStr(hostNameCache[data.hostIp]);
+            if (parsed) {
+                examHtml = '<div class="tp-card-exam">' + parsed.topic
+                    + (parsed.role ? ' <span class="tp-card-role">' + parsed.role + '</span>' : '')
+                    + '</div>';
+            }
         }
 
         var rightHtml;
@@ -228,6 +271,7 @@
             + '  </div>'
             + '  <div class="tp-card-user">'
             + '    <div class="tp-card-name" title="' + data.user.sub + '">' + data.user.display + tagHtml + '</div>'
+            + examHtml
             + '    <div class="tp-card-time">' + data.dateFormatted + '</div>'
             + '  </div>'
             + '</div>'
@@ -283,6 +327,11 @@
     }
 
     function init() {
+        fetchHostNames().then(function() {
+            renderCardList();
+        });
+
+        // Also render immediately (without host names), will update when hosts load
         renderCardList();
 
         var tableEl = document.getElementById('table-record');

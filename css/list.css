@@ -80,6 +80,21 @@
     margin-top: 1px;
 }
 
+/* Exam topic line */
+.tp-card-exam {
+    font-size: 11px;
+    color: #666;
+    margin-top: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tp-card-role {
+    color: #0a84ff;
+    font-weight: 500;
+}
+
 /* Right section: duration + action */
 .tp-card-right {
     display: flex;

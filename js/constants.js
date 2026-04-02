@@ -1,6 +1,11 @@
 // Teleport RDP Web Player — Constants
 var TPP = {};
 
+TPP.escapeHtml = function(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+};
+
 TPP.MAGIC_TPPR = 0x52505054;
 TPP.HEADER_VER = 4;
 TPP.TPPR_TYPE_RDP = 0x0101;
@@ -25,3 +30,21 @@ TPP.FETCH_TIMEOUT_MS = 30000;
 TPP.TICK_MS = 33;
 TPP.SILENCE_THRESHOLD_MS = 1000;
 TPP.LE = true;
+
+// --- AI Analysis Constants ---
+TPP.AI_WINDOW_MS = 10000;
+TPP.AI_FALLBACK_INTERVAL_MS = 150000;
+TPP.AI_END_SEGMENT_RATIO = 0.15;
+TPP.AI_END_SEGMENT_MIN_MS = 300000;
+TPP.AI_END_SAMPLE_INTERVAL_MS = 10000;
+TPP.AI_L2_EXPAND_MS = 5000;
+TPP.AI_L2_SAMPLE_INTERVAL_MS = 2000;
+TPP.AI_MAX_L1L3_FRAMES = 25;
+TPP.AI_MAX_L2_FRAMES = 15;
+TPP.AI_MAX_TOTAL_FRAMES = 40;
+TPP.AI_API_TIMEOUT_MS = 300000;
+TPP.AI_DENSITY_THRESHOLD = 0.3;
+TPP.AI_EDGE_SETTLE_MS = 3000;
+TPP.AI_SKIP_START_SEC = 300;
+TPP.AI_EXPORT_MAX_WIDTH = 800;
+TPP.AI_JPEG_QUALITY = 0.4;

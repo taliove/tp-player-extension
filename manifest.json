@@ -3,6 +3,9 @@
     "name": "Teleport RDP Web Player",
     "version": "1.0.0",
     "description": "在浏览器中播放 Teleport RDP 录屏，替代 tp-player 桌面应用",
+    "background": { "service_worker": "background.js" },
+    "permissions": ["storage"],
+    "host_permissions": ["https://api.anthropic.com/*", "https://api.openai.com/*", "*://*/*"],
     "content_scripts": [
         {
             "matches": ["*://*/audit/record*"],
