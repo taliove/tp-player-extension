@@ -296,59 +296,6 @@ body > :not(#player-app):not(script) {
     pointer-events: none;
 }
 
-/* === AI Keyframe Markers on Progress Bar === */
-.frame-marker {
-    position: absolute;
-    width: 8px;
-    height: 8px;
-    background: var(--accent);
-    border: 1.5px solid rgba(255, 255, 255, 0.6);
-    border-radius: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    cursor: pointer;
-    z-index: 3;
-    transition: transform 0.15s, background 0.15s;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-}
-
-.frame-marker:hover {
-    transform: translate(-50%, -50%) scale(1.5);
-    background: var(--accent-hover);
-}
-
-.frame-marker.suspicious {
-    background: var(--warning);
-    border-color: rgba(255, 159, 10, 0.8);
-}
-
-.frame-marker.suspicious:hover {
-    background: #ffb340;
-}
-
-.frame-marker-tooltip {
-    position: absolute;
-    bottom: 100%;
-    left: 0;
-    transform: translateX(-50%);
-    background: var(--bg-elevated);
-    border: 0.5px solid var(--separator);
-    color: var(--text-primary);
-    font-size: 11px;
-    padding: 4px 8px;
-    border-radius: 4px;
-    white-space: nowrap;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s;
-    z-index: 20;
-    margin-bottom: 6px;
-    box-shadow: var(--shadow-sm);
-}
-
-.frame-marker-tooltip.visible {
-    opacity: 1;
-}
 
 /* === Time Display === */
 #time-display {
@@ -1168,11 +1115,6 @@ body > :not(#player-app):not(script) {
 .ai-report-status-text {
     color: var(--text-secondary);
     font-size: 13px;
-}
-
-#ai-frame-estimate {
-    color: var(--text-tertiary);
-    font-size: 11px;
 }
 
 .ai-btn-primary {
