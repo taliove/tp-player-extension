@@ -290,6 +290,15 @@ TPP.createReportPanel = function(opts) {
             html += '</div>';
         }
 
+        // L3 deep check findings
+        if (l2Result.confirmed !== undefined) {
+            html += '<div class="ai-phase-deep-check ' + (l2Result.confirmed ? 'confirmed' : 'dismissed') + '">';
+            html += '<strong>' + (l2Result.confirmed ? '\u2757 \u786e\u8ba4' : '\u2705 \u6392\u9664') + ':</strong> ';
+            html += escapeHtml(l2Result.description || '');
+            if (l2Result.evidence) html += '<div class="ai-dc-evidence">' + escapeHtml(l2Result.evidence) + '</div>';
+            html += '</div>';
+        }
+
         detail.innerHTML = html;
         bindTimeLinks(detail);
     }

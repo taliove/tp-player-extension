@@ -68,6 +68,7 @@
     var reportCache = TPP.createReportCache();
     var hostResolver = TPP.createHostResolver(serverBase);
     var aiAnalyzer = null;
+    var lastL1Result = null;
     var reportPanel = null;
     var allDataReady = false;
     var downloadedFileCount = 0;
@@ -363,7 +364,18 @@
                 aiSettings.update({ autoAnalyze: checked });
             },
             onRetryPhase: function(phaseIndex) {
-                startAnalysis();
+                if (!lastL1Result || !aiAnalyzer) {
+                    startAnalysis();
+                    return;
+                }
+                aiSettings.load().then(function(s) {
+                    reportPanel.updatePhaseCard(phaseIndex, 'analyzing');
+                    aiAnalyzer.retryPhase(phaseIndex, lastL1Result, s).then(function(result) {
+                        reportPanel.updatePhaseCard(phaseIndex, 'done', result);
+                    }).catch(function(err) {
+                        reportPanel.updatePhaseCard(phaseIndex, 'error', null, err.message);
+                    });
+                });
             }
         });
 
@@ -497,6 +509,7 @@
                 onPhaseReady: function(phaseIndex, status, result, errorMsg) {
                     if (!reportPanel) return;
                     if (phaseIndex === -1 && status === 'skeleton') {
+                        lastL1Result = result;
                         reportPanel.renderSkeleton(result);
                     } else {
                         reportPanel.updatePhaseCard(phaseIndex, status, result, errorMsg);

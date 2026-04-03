@@ -167,8 +167,8 @@ TPP.createAIAnalyzer = function(opts) {
             return { body: JSON.stringify({ model: settings.model, max_tokens: 8192, messages: msgs }),
                      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + settings.apiKey } };
         }
-        var content = [];
-        for (var i = 0; i < images.length; i++) {
+        content = [];
+        for (i = 0; i < images.length; i++) {
             content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: images[i].base64 } });
             content.push({ type: 'text', text: '[' + formatTs(images[i].timestamp_sec) + '] ' + (images[i].label || '') });
         }
@@ -633,7 +633,7 @@ TPP.createAIAnalyzer = function(opts) {
                 for (var j = 0; j < l3Results.length; j++) {
                     var l3 = l3Results[j];
                     if (l3._phaseIndex !== undefined) {
-                        onPhaseReady(l3._phaseIndex, l3.confirmed ? 'warning' : 'done');
+                        onPhaseReady(l3._phaseIndex, l3.confirmed ? 'warning' : 'done', l3);
                     }
                 }
             }
