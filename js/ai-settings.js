@@ -8,17 +8,19 @@ TPP.createAISettings = function() {
         apiKey: '',
         model: 'claude-sonnet-4-6',
         autoAnalyze: false,
-        endSegmentMinutes: 5,
-        maxFrames: 80,
-        apiTimeoutSec: 120,
-        skipStartSec: 300,
-        currentTemplate: 'backend'
+        apiTimeoutSec: 60
     };
 
     function load() {
         return TPP.extBridge.storageGet(STORAGE_KEY).then(function(result) {
             var saved = result[STORAGE_KEY];
-            return Object.assign({}, defaults, saved || {});
+            var merged = Object.assign({}, defaults, saved || {});
+            // Remove deprecated fields from stored data
+            delete merged.currentTemplate;
+            delete merged.maxFrames;
+            delete merged.endSegmentMinutes;
+            delete merged.skipStartSec;
+            return merged;
         });
     }
 
