@@ -167,54 +167,6 @@
         }
     }
 
-    // --- AI Keyframe markers on progress bar ---
-    var frameMarkerTooltip = null;
-
-    function clearFrameMarkers() {
-        progressBar.querySelectorAll('.frame-marker').forEach(function(el) { el.remove(); });
-        if (frameMarkerTooltip) { frameMarkerTooltip.remove(); frameMarkerTooltip = null; }
-    }
-
-    function renderFrameMarkers(samplePoints, totalMs) {
-        clearFrameMarkers();
-        if (!samplePoints || samplePoints.length === 0 || totalMs <= 0) return;
-
-        // Create shared tooltip
-        frameMarkerTooltip = document.createElement('div');
-        frameMarkerTooltip.className = 'frame-marker-tooltip';
-        progressContainer.appendChild(frameMarkerTooltip);
-
-        for (var i = 0; i < samplePoints.length; i++) {
-            (function(pt) {
-                var timeMs = pt.timestampSec * 1000;
-                var pct = (timeMs / totalMs) * 100;
-                var marker = document.createElement('div');
-                marker.className = 'frame-marker';
-                if (pt.label && pt.label.indexOf('\u53ef\u7591') >= 0) {
-                    marker.classList.add('suspicious');
-                }
-                marker.style.left = pct + '%';
-                marker.setAttribute('data-time', timeMs);
-                marker.setAttribute('data-label', pt.label || '');
-
-                marker.addEventListener('mouseenter', function(e) {
-                    frameMarkerTooltip.textContent = formatTime(timeMs) + (pt.label ? ' \u2014 ' + pt.label : '');
-                    frameMarkerTooltip.style.left = pct + '%';
-                    frameMarkerTooltip.classList.add('visible');
-                });
-                marker.addEventListener('mouseleave', function() {
-                    frameMarkerTooltip.classList.remove('visible');
-                });
-                marker.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    if (player) player.seek(timeMs);
-                });
-
-                progressBar.appendChild(marker);
-            })(samplePoints[i]);
-        }
-    }
-
     // --- Speed control ---
     function setActiveSpeed(targetBtn) {
         for (var i = 0; i < speedBtns.length; i++) speedBtns[i].classList.remove('active');
@@ -378,7 +330,6 @@
         if (!allDataReady || !aiAnalyzer) return;
         reportPanel.showProgress();
         reportPanel.updateProgress('loading', 0, 0);
-        clearFrameMarkers();
 
         aiAnalyzer.runAnalysis().then(function(report) {
             if (!report || typeof report !== 'object') {
@@ -406,31 +357,13 @@
             rid: rid,
             reportCache: reportCache,
             aiSettings: aiSettings,
-            templates: promptTemplates,
             onStartAnalysis: startAnalysis,
             onCancelAnalysis: cancelAnalysis,
             onAutoChanged: function(checked) {
                 aiSettings.update({ autoAnalyze: checked });
             },
-            onReportRendered: function(report) {
-                // Render timeline markers from report (for cached reports without samplePoints)
-                var h = window.__TP_HEADER;
-                if (!h) return;
-                // Prefer analyzer's sample points if available (fresh analysis)
-                var pts = aiAnalyzer && aiAnalyzer.getSamplePoints();
-                if (pts && pts.length > 0) {
-                    renderFrameMarkers(pts, h.timeMs);
-                } else if (report.timeline && report.timeline.length > 0) {
-                    // Fallback: extract markers from report timeline
-                    var tlPts = [];
-                    for (var t = 0; t < report.timeline.length; t++) {
-                        var item = report.timeline[t];
-                        if (item.timestamp_sec !== undefined) {
-                            tlPts.push({ timestampSec: item.timestamp_sec, label: item.activity || '' });
-                        }
-                    }
-                    if (tlPts.length > 0) renderFrameMarkers(tlPts, h.timeMs);
-                }
+            onRetryPhase: function(phaseIndex) {
+                startAnalysis();
             }
         });
 
@@ -501,17 +434,6 @@
                 metaParts.push(new Date(header.timestamp * 1000).toLocaleString('zh-CN'));
                 menuMeta.textContent = metaParts.join(' | ');
 
-                // Auto-select AI template based on role
-                var autoTemplate = hostResolver.detectTemplate(parsed.role);
-                if (autoTemplate) {
-                    aiSettings.load().then(function(s) {
-                        // Only auto-set if user hasn't manually changed it
-                        if (s.currentTemplate === 'backend' || !s._userSetTemplate) {
-                            aiSettings.update({ currentTemplate: autoTemplate });
-                        }
-                    });
-                }
-
                 // Update info panel with host name
                 updateInfoPanel();
             }).catch(function() { /* ignore, non-critical */ });
@@ -565,13 +487,20 @@
                 header: header,
                 keyframes: keyframes,
                 allPackets: allPackets,
-                player: player,
                 settings: aiSettings,
                 templates: promptTemplates,
                 reportCache: reportCache,
                 rid: rid,
                 onProgress: function(stage, current, total) {
                     if (reportPanel) reportPanel.updateProgress(stage, current, total);
+                },
+                onPhaseReady: function(phaseIndex, status, result, errorMsg) {
+                    if (!reportPanel) return;
+                    if (phaseIndex === -1 && status === 'skeleton') {
+                        reportPanel.renderSkeleton(result);
+                    } else {
+                        reportPanel.updatePhaseCard(phaseIndex, status, result, errorMsg);
+                    }
                 }
             });
 
@@ -614,9 +543,6 @@
                         allDataReady = true;
                         if (reportPanel) {
                             reportPanel.setDataReady(true);
-                            reportPanel.setFrameEstimate(
-                                Math.min(TPP.AI_MAX_L1L3_FRAMES, Math.ceil(header.timeMs / TPP.AI_FALLBACK_INTERVAL_MS) + 10)
-                            );
                         }
                     } else if (reportPanel) {
                         reportPanel.setDataReady(false, '\u6570\u636e\u4e0b\u8f7d\u4e2d... (1/' + header.datFileCount + ')');
@@ -647,9 +573,6 @@
                                         allDataReady = true;
                                         if (reportPanel) {
                                             reportPanel.setDataReady(true);
-                                            reportPanel.setFrameEstimate(
-                                                Math.min(TPP.AI_MAX_L1L3_FRAMES, Math.ceil(header.timeMs / TPP.AI_FALLBACK_INTERVAL_MS) + 10)
-                                            );
                                             if (reportPanel.getAutoAnalyze()) {
                                                 reportPanel.loadCachedReport().then(function(hasCached) {
                                                     if (!hasCached) startAnalysis();
