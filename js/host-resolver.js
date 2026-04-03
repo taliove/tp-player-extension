@@ -76,27 +76,6 @@ TPP.createHostResolver = function(serverBase) {
         return { topic: name, role: '', index: 0, raw: name };
     }
 
-    // Map role text to prompt template ID
-    var ROLE_MAP = [
-        { pattern: /大数据/, template: 'bigdata' },
-        { pattern: /测试/, template: 'qa' },
-        { pattern: /运维/, template: 'devops' },
-        { pattern: /Java|java|JAVA/, template: 'backend' },
-        { pattern: /前端/, template: 'backend' },
-        { pattern: /后端/, template: 'backend' },
-        { pattern: /开发/, template: 'backend' }
-    ];
-
-    function detectTemplate(role) {
-        if (!role) return null;
-        for (var i = 0; i < ROLE_MAP.length; i++) {
-            if (ROLE_MAP[i].pattern.test(role)) {
-                return ROLE_MAP[i].template;
-            }
-        }
-        return null;
-    }
-
     function formatTitle(parsed, username) {
         var parts = [];
         if (parsed.topic) parts.push(parsed.topic);
@@ -110,7 +89,6 @@ TPP.createHostResolver = function(serverBase) {
         resolveByIp: resolveByIp,
         resolveById: resolveById,
         parseHostName: parseHostName,
-        detectTemplate: detectTemplate,
         formatTitle: formatTitle
     };
 };
