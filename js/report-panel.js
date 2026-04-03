@@ -16,7 +16,6 @@ TPP.createReportPanel = function(opts) {
     var settingsPanel = document.getElementById('ai-settings-panel');
     var btnAnalyze = document.getElementById('btn-ai-analyze');
     var btnCancel = document.getElementById('btn-ai-cancel');
-    var progressBar = document.getElementById('ai-progress-bar');
     var progressText = document.getElementById('ai-progress-text');
     var chkAuto = document.getElementById('chk-ai-auto');
 
@@ -111,6 +110,13 @@ TPP.createReportPanel = function(opts) {
         done:        { start: 100, end: 100 }
     };
 
+    // Map stages to pipeline steps
+    var STAGE_PIPELINE = {
+        loading: 'l1', l1_capture: 'l1', l1_analyze: 'l1', l1_done: 'l1',
+        l2_phase: 'l2', l3_check: 'l3', saving: 'l3', done: 'l3'
+    };
+    var PIPELINE_ORDER = ['l1', 'l2', 'l3'];
+
     function updateProgress(stage, current, total) {
         showProgress();
         var label = STAGE_LABELS[stage] || stage;
@@ -126,11 +132,34 @@ TPP.createReportPanel = function(opts) {
 
         pct = Math.round(Math.min(100, Math.max(0, pct)));
 
-        if (progressBar) {
-            progressBar.style.width = pct + '%';
-            progressBar.classList.remove('indeterminate');
+        // Update SVG circular progress
+        var circle = document.getElementById('ai-progress-circle');
+        var pctEl = document.getElementById('ai-progress-pct');
+        if (circle) {
+            var circumference = 2 * Math.PI * 34; // r=34
+            var offset = circumference * (1 - pct / 100);
+            circle.style.strokeDasharray = circumference;
+            circle.style.strokeDashoffset = offset;
         }
-        if (progressText) progressText.textContent = pct + '% \u2014 ' + label;
+        if (pctEl) pctEl.textContent = pct + '%';
+        if (progressText) progressText.textContent = label;
+
+        // Update pipeline steps
+        var activeStep = STAGE_PIPELINE[stage] || 'l1';
+        var activeIdx = PIPELINE_ORDER.indexOf(activeStep);
+        var steps = document.querySelectorAll('.ai-pipeline-step');
+        var connectors = document.querySelectorAll('.ai-pipeline-connector');
+        for (var i = 0; i < steps.length; i++) {
+            var step = steps[i];
+            var stepName = step.getAttribute('data-step');
+            var stepIdx = PIPELINE_ORDER.indexOf(stepName);
+            step.classList.remove('done', 'active');
+            if (stepIdx < activeIdx) step.classList.add('done');
+            else if (stepIdx === activeIdx) step.classList.add('active');
+        }
+        for (var c = 0; c < connectors.length; c++) {
+            connectors[c].classList.toggle('done', c < activeIdx);
+        }
     }
 
     // --- Helpers ---
@@ -140,18 +169,34 @@ TPP.createReportPanel = function(opts) {
         return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
     }
 
-    function renderStars(count) {
-        var full = Math.min(count, 5);
-        var html = '';
+    function renderRatingBar(count) {
+        var full = Math.min(Math.max(count || 0, 0), 5);
+        var html = '<span class="ai-rating-bar">';
         for (var i = 0; i < 5; i++) {
-            html += i < full ? '\u2605' : '\u2606';
+            html += '<span class="ai-rating-seg' + (i < full ? ' filled' : '') + '"></span>';
         }
+        html += '</span>';
         return html;
     }
 
     function escapeHtml(str) {
         if (!str) return '';
         return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function scoreColor(score) {
+        var n = parseInt(score, 10);
+        if (isNaN(n)) return 'var(--text-tertiary)';
+        if (n >= 70) return 'var(--score-excellent)';
+        if (n >= 50) return 'var(--score-good)';
+        if (n >= 30) return 'var(--score-medium)';
+        return 'var(--score-low)';
+    }
+
+    function scorePct(score) {
+        var n = parseInt(score, 10);
+        if (isNaN(n)) return 0;
+        return Math.max(0, Math.min(100, n));
     }
 
     // --- L1 Skeleton rendering ---
@@ -162,9 +207,15 @@ TPP.createReportPanel = function(opts) {
         currentL1Result = l1Result;
         showResult();
         var html = '';
+        var sc = scorePct(l1Result.score);
+        var sColor = scoreColor(l1Result.score);
 
         // Overall Assessment header
         html += '<div class="ai-report-header">';
+        html += '<div class="ai-score-ring" style="--score-pct:' + sc + ';--score-color:' + sColor + '">';
+        html += '<span class="ai-score-value" id="ai-final-score">' + escapeHtml(l1Result.score || '-') + '</span>';
+        html += '</div>';
+        html += '<div class="ai-report-header-body">';
         if (l1Result.topic) {
             html += '<div class="ai-report-exam">';
             html += '<span class="ai-report-exam-topic">' + escapeHtml(l1Result.topic) + '</span>';
@@ -173,18 +224,20 @@ TPP.createReportPanel = function(opts) {
             }
             html += '</div>';
         }
-        html += '<div class="ai-report-score" id="ai-final-score">' + escapeHtml(l1Result.score || '-') + '</div>';
         html += '<div class="ai-report-summary" id="ai-final-summary">' + escapeHtml(l1Result.summary || '') + '</div>';
 
-        // Dimension chips (names only, stars filled later)
+        // Dimension chips (names only, bars filled later)
         if (l1Result.dimensions && l1Result.dimensions.length > 0) {
-            html += '<div class="ai-dimension-chips" id="ai-dimension-chips">';
+            html += '<div class="ai-dimension-list" id="ai-dimension-chips">';
             for (var d = 0; d < l1Result.dimensions.length; d++) {
-                html += '<span class="ai-dim-chip">' + escapeHtml(l1Result.dimensions[d]) + ' <span class="ai-dim-chip-stars">\u00b7\u00b7\u00b7</span></span>';
+                html += '<div class="ai-dim-row"><span class="ai-dim-name">' + escapeHtml(l1Result.dimensions[d]) + '</span>'
+                    + '<span class="ai-rating-bar"><span class="ai-rating-seg"></span><span class="ai-rating-seg"></span><span class="ai-rating-seg"></span><span class="ai-rating-seg"></span><span class="ai-rating-seg"></span></span>'
+                    + '</div>';
             }
             html += '</div>';
         }
-        html += '</div>';
+        html += '</div>'; // .ai-report-header-body
+        html += '</div>'; // .ai-report-header
 
         // Phase cards (pending state)
         html += '<div id="ai-phase-cards">';
@@ -193,16 +246,17 @@ TPP.createReportPanel = function(opts) {
             var phase = phases[i];
             html += '<div class="ai-phase-card pending" id="ai-phase-' + i + '" data-phase="' + i + '">';
             html += '<div class="ai-phase-header">';
-            html += '<span class="ai-phase-icon">\u23f3</span>';
+            html += '<span class="ai-status-dot pending"></span>';
             html += '<span class="ai-phase-name">' + escapeHtml(phase.name) + '</span>';
             html += '<span class="ai-phase-time">'
                 + '<a class="ai-time-link" data-time="' + (phase.start_sec * 1000) + '">' + formatTimestamp(phase.start_sec) + '</a>'
                 + ' - '
                 + '<a class="ai-time-link" data-time="' + (phase.end_sec * 1000) + '">' + formatTimestamp(phase.end_sec) + '</a>'
                 + '</span>';
+            html += '<span class="ai-phase-chevron"></span>';
             html += '</div>';
             html += '<div class="ai-phase-summary">' + escapeHtml(phase.summary || '') + '</div>';
-            html += '<div class="ai-phase-detail" style="display:none"></div>';
+            html += '<div class="ai-phase-detail"></div>';
             html += '</div>';
         }
         html += '</div>';
@@ -218,22 +272,14 @@ TPP.createReportPanel = function(opts) {
         var card = document.getElementById('ai-phase-' + phaseIndex);
         if (!card) return;
 
-        // Update status class and icon
         card.className = 'ai-phase-card ' + status;
-        var icon = card.querySelector('.ai-phase-icon');
-        if (icon) {
-            var icons = { pending: '\u23f3', analyzing: '', done: '\u2705', warning: '\u26a0\ufe0f', error: '\u274c' };
-            if (status === 'analyzing') {
-                icon.innerHTML = '<span class="ai-phase-spinner"></span>';
-            } else {
-                icon.textContent = icons[status] || '\u23f3';
-            }
-        }
+        var dot = card.querySelector('.ai-status-dot');
+        if (dot) dot.className = 'ai-status-dot ' + status;
 
         if (status === 'error') {
             var detail = card.querySelector('.ai-phase-detail');
             if (detail) {
-                detail.style.display = '';
+                card.classList.add('expanded');
                 detail.innerHTML = '<div class="ai-phase-error">'
                     + escapeHtml(errorMsg || '\u5206\u6790\u5931\u8d25')
                     + ' <button class="ai-btn-retry" data-phase="' + phaseIndex + '">\u91cd\u8bd5</button>'
@@ -261,10 +307,8 @@ TPP.createReportPanel = function(opts) {
                 var dim = l2Result.dimensions[d];
                 html += '<div class="ai-phase-dim">';
                 html += '<span class="ai-phase-dim-name">' + escapeHtml(dim.name) + '</span>';
-                html += '<span class="ai-phase-dim-stars">' + renderStars(dim.stars) + '</span>';
-                if (dim.comment) {
-                    html += '<span class="ai-phase-dim-comment">' + escapeHtml(dim.comment) + '</span>';
-                }
+                html += renderRatingBar(dim.stars);
+                if (dim.comment) html += '<span class="ai-phase-dim-comment">' + escapeHtml(dim.comment) + '</span>';
                 if (dim.evidence_timestamps && dim.evidence_timestamps.length > 0) {
                     html += '<span class="ai-phase-dim-evidence">';
                     for (var e = 0; e < dim.evidence_timestamps.length; e++) {
@@ -280,7 +324,7 @@ TPP.createReportPanel = function(opts) {
 
         if (l2Result.suspicious) {
             html += '<div class="ai-phase-suspicious">';
-            html += '\u26a0\ufe0f ' + escapeHtml(l2Result.suspicious.description || '');
+            html += '<span class="ai-alert-icon">\u26a0</span> ' + escapeHtml(l2Result.suspicious.description || '');
             if (l2Result.suspicious.evidence_timestamps) {
                 for (var s = 0; s < l2Result.suspicious.evidence_timestamps.length; s++) {
                     html += ' <a class="ai-time-link" data-time="' + (l2Result.suspicious.evidence_timestamps[s] * 1000) + '">'
@@ -290,16 +334,16 @@ TPP.createReportPanel = function(opts) {
             html += '</div>';
         }
 
-        // L3 deep check findings
         if (l2Result.confirmed !== undefined) {
             html += '<div class="ai-phase-deep-check ' + (l2Result.confirmed ? 'confirmed' : 'dismissed') + '">';
-            html += '<strong>' + (l2Result.confirmed ? '\u2757 \u786e\u8ba4' : '\u2705 \u6392\u9664') + ':</strong> ';
+            html += '<span class="ai-dc-label">' + (l2Result.confirmed ? '\u786e\u8ba4' : '\u6392\u9664') + '</span> ';
             html += escapeHtml(l2Result.description || '');
             if (l2Result.evidence) html += '<div class="ai-dc-evidence">' + escapeHtml(l2Result.evidence) + '</div>';
             html += '</div>';
         }
 
         detail.innerHTML = html;
+        card.classList.add('expanded');
         bindTimeLinks(detail);
     }
 
@@ -308,9 +352,15 @@ TPP.createReportPanel = function(opts) {
     function renderReport(report) {
         showResult();
         var html = '';
+        var sc = scorePct(report.score);
+        var sColor = scoreColor(report.score);
 
-        // Overall header
+        // Overall header with score ring
         html += '<div class="ai-report-header">';
+        html += '<div class="ai-score-ring" style="--score-pct:' + sc + ';--score-color:' + sColor + '">';
+        html += '<span class="ai-score-value">' + escapeHtml(report.score || '-') + '</span>';
+        html += '</div>';
+        html += '<div class="ai-report-header-body">';
         if (report.topic) {
             html += '<div class="ai-report-exam">';
             html += '<span class="ai-report-exam-topic">' + escapeHtml(report.topic) + '</span>';
@@ -328,15 +378,16 @@ TPP.createReportPanel = function(opts) {
                 html += '</div>';
             }
         }
-        html += '<div class="ai-report-score">' + escapeHtml(report.score || '-') + '</div>';
         html += '<div class="ai-report-summary">' + escapeHtml(report.summary || '') + '</div>';
 
-        // Dimension summary chips
+        // Dimension rating bars
         if (report.dimensions && report.dimensions.length > 0) {
-            html += '<div class="ai-dimension-chips">';
+            html += '<div class="ai-dimension-list">';
             for (var d = 0; d < report.dimensions.length; d++) {
                 var dim = report.dimensions[d];
-                html += '<span class="ai-dim-chip">' + escapeHtml(dim.name) + ' <span class="ai-dim-chip-stars">' + renderStars(dim.stars) + '</span></span>';
+                html += '<div class="ai-dim-row"><span class="ai-dim-name">' + escapeHtml(dim.name) + '</span>'
+                    + renderRatingBar(dim.stars)
+                    + '</div>';
             }
             html += '</div>';
         }
@@ -348,16 +399,14 @@ TPP.createReportPanel = function(opts) {
             var tokIn = m.tokens ? (m.tokens.input || 0) : 0;
             var tokOut = m.tokens ? (m.tokens.output || 0) : 0;
             html += '<div class="ai-report-meta">';
-            html += '<span title="\u6a21\u578b">' + escapeHtml(m.model || '-') + '</span>';
-            html += '<span class="meta-sep">\u00b7</span>';
-            html += '<span title="\u8017\u65f6">' + dur + '</span>';
-            html += '<span class="meta-sep">\u00b7</span>';
-            html += '<span title="Token \u6d88\u8017">' + tokIn.toLocaleString() + ' in / ' + tokOut.toLocaleString() + ' out</span>';
-            html += '<span class="meta-sep">\u00b7</span>';
-            html += '<span title="\u91c7\u5e27\u6570">' + (m.frames || '-') + ' \u5e27</span>';
+            html += '<span class="ai-meta-pill" title="\u6a21\u578b">' + escapeHtml(m.model || '-') + '</span>';
+            html += '<span class="ai-meta-pill" title="\u8017\u65f6">' + dur + '</span>';
+            html += '<span class="ai-meta-pill" title="Token">' + tokIn.toLocaleString() + ' / ' + tokOut.toLocaleString() + '</span>';
+            html += '<span class="ai-meta-pill" title="\u91c7\u5e27">' + (m.frames || '-') + ' \u5e27</span>';
             html += '</div>';
         }
-        html += '</div>';
+        html += '</div>'; // .ai-report-header-body
+        html += '</div>'; // .ai-report-header
 
         // Phase cards
         html += '<div id="ai-phase-cards">';
@@ -365,21 +414,21 @@ TPP.createReportPanel = function(opts) {
         for (var i = 0; i < phases.length; i++) {
             var phase = phases[i];
             var statusClass = phase.status || 'done';
-            var icons = { done: '\u2705', warning: '\u26a0\ufe0f', error: '\u274c' };
             html += '<div class="ai-phase-card ' + statusClass + '" id="ai-phase-' + i + '" data-phase="' + i + '">';
             html += '<div class="ai-phase-header">';
-            html += '<span class="ai-phase-icon">' + (icons[statusClass] || '\u2705') + '</span>';
+            html += '<span class="ai-status-dot ' + statusClass + '"></span>';
             html += '<span class="ai-phase-name">' + escapeHtml(phase.name) + '</span>';
             html += '<span class="ai-phase-time">'
                 + '<a class="ai-time-link" data-time="' + (phase.start_sec * 1000) + '">' + formatTimestamp(phase.start_sec) + '</a>'
                 + ' - '
                 + '<a class="ai-time-link" data-time="' + (phase.end_sec * 1000) + '">' + formatTimestamp(phase.end_sec) + '</a>'
                 + '</span>';
+            html += '<span class="ai-phase-chevron"></span>';
             html += '</div>';
             html += '<div class="ai-phase-summary">' + escapeHtml(phase.summary || '') + '</div>';
 
-            // Detail (collapsible, hidden by default)
-            html += '<div class="ai-phase-detail" style="display:none">';
+            // Detail (collapsible, collapsed by default via CSS)
+            html += '<div class="ai-phase-detail">';
             if (phase.evaluation) {
                 html += '<div class="ai-phase-eval">' + escapeHtml(phase.evaluation) + '</div>';
             }
@@ -389,7 +438,7 @@ TPP.createReportPanel = function(opts) {
                     var pdim = phase.dimensions[pd];
                     html += '<div class="ai-phase-dim">';
                     html += '<span class="ai-phase-dim-name">' + escapeHtml(pdim.name) + '</span>';
-                    html += '<span class="ai-phase-dim-stars">' + renderStars(pdim.stars) + '</span>';
+                    html += renderRatingBar(pdim.stars);
                     if (pdim.comment) html += '<span class="ai-phase-dim-comment">' + escapeHtml(pdim.comment) + '</span>';
                     if (pdim.evidence_timestamps && pdim.evidence_timestamps.length > 0) {
                         html += '<span class="ai-phase-dim-evidence">';
@@ -404,12 +453,12 @@ TPP.createReportPanel = function(opts) {
                 html += '</div>';
             }
             if (phase.suspicious) {
-                html += '<div class="ai-phase-suspicious">\u26a0\ufe0f ' + escapeHtml(phase.suspicious.description || '') + '</div>';
+                html += '<div class="ai-phase-suspicious"><span class="ai-alert-icon">\u26a0</span> ' + escapeHtml(phase.suspicious.description || '') + '</div>';
             }
             if (phase.deep_check) {
                 var dc = phase.deep_check;
                 html += '<div class="ai-phase-deep-check ' + (dc.confirmed ? 'confirmed' : 'dismissed') + '">';
-                html += '<strong>' + (dc.confirmed ? '\u2757 \u786e\u8ba4' : '\u2705 \u6392\u9664') + ':</strong> ';
+                html += '<span class="ai-dc-label">' + (dc.confirmed ? '\u786e\u8ba4' : '\u6392\u9664') + '</span> ';
                 html += escapeHtml(dc.description || '');
                 if (dc.evidence) html += '<div class="ai-dc-evidence">' + escapeHtml(dc.evidence) + '</div>';
                 html += '</div>';
@@ -422,17 +471,16 @@ TPP.createReportPanel = function(opts) {
         }
         html += '</div>';
 
-        // Conclusion
+        // Recommendation banner
         var recMap = { '\u901a\u8fc7': 'pass', '\u5f85\u5b9a': 'pending', '\u4e0d\u901a\u8fc7': 'fail' };
         var recClass = recMap[report.recommendation] || 'unknown';
-        html += '<div class="ai-report-section">';
-        html += '<div class="ai-recommendation ai-rec-' + recClass + '">';
-        html += '\u5efa\u8bae: ' + escapeHtml(report.recommendation || '-') + '</div>';
+        html += '<div class="ai-recommendation-banner ai-rec-' + recClass + '">';
+        html += escapeHtml(report.recommendation || '-');
         html += '</div>';
 
         // Actions
         html += '<div class="ai-report-actions">';
-        html += '<button id="btn-ai-copy" class="ai-btn-secondary">\ud83d\udccb \u590d\u5236\u62a5\u544a</button>';
+        html += '<button id="btn-ai-copy" class="ai-btn-secondary">\u590d\u5236\u62a5\u544a</button>';
         html += '<button id="btn-ai-export" class="ai-btn-secondary">\u5bfc\u51fa JSON</button>';
         html += '<button id="btn-ai-rerun" class="ai-btn-secondary">\u91cd\u65b0\u5206\u6790</button>';
         html += '</div>';
@@ -469,11 +517,7 @@ TPP.createReportPanel = function(opts) {
                 if (!header) return;
                 header.style.cursor = 'pointer';
                 header.addEventListener('click', function() {
-                    var detail = card.querySelector('.ai-phase-detail');
-                    if (!detail) return;
-                    var isOpen = detail.style.display !== 'none';
-                    detail.style.display = isOpen ? 'none' : '';
-                    card.classList.toggle('expanded', !isOpen);
+                    card.classList.toggle('expanded');
                 });
             })(cards[c]);
         }
@@ -549,7 +593,7 @@ TPP.createReportPanel = function(opts) {
             md += '## \u8bc4\u4f30\u7ef4\u5ea6\n';
             for (var d = 0; d < report.dimensions.length; d++) {
                 var dim = report.dimensions[d];
-                md += '- **' + dim.name + '** ' + renderStars(dim.stars) + ' \u2014 ' + (dim.comment || '') + '\n';
+                md += '- **' + dim.name + '** ' + dim.stars + '/5 \u2014 ' + (dim.comment || '') + '\n';
             }
             md += '\n';
         }
