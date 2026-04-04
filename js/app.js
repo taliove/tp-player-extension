@@ -70,6 +70,7 @@
     var aiAnalyzer = null;
     var lastL1Result = null;
     var reportPanel = null;
+    var timelineMarkers = null;
     var allDataReady = false;
     var downloadedFileCount = 0;
 
@@ -336,7 +337,13 @@
             if (!report || typeof report !== 'object') {
                 throw new Error('AI 返回了空结果');
             }
-            reportPanel.renderReport(report);
+            // Use verdict banner + timeline markers if markers present
+            if (report.markers && report.markers.length > 0 && timelineMarkers) {
+                timelineMarkers.setMarkers(report.markers);
+                reportPanel.renderVerdictBanner(report);
+            } else {
+                reportPanel.renderReport(report);
+            }
         }).catch(function(err) {
             if (err.message === '\u5df2\u53d6\u6d88') {
                 reportPanel.showIdle();
@@ -511,6 +518,10 @@
                     if (phaseIndex === -1 && status === 'skeleton') {
                         lastL1Result = result;
                         reportPanel.renderSkeleton(result);
+                        // Set L1 markers on timeline immediately
+                        if (result.markers && result.markers.length > 0 && timelineMarkers) {
+                            timelineMarkers.setMarkers(result.markers);
+                        }
                     } else {
                         reportPanel.updatePhaseCard(phaseIndex, status, result, errorMsg);
                     }
@@ -530,6 +541,28 @@
                     allPackets.sort(function (a, b) { return a.timeMs - b.timeMs; });
                     player.load(allPackets, keyframes, header.timeMs);
                     renderCorruptMarks(corruptedRanges, allPackets, header.timeMs);
+
+                    // Initialize timeline markers (heatmap + AI markers)
+                    var markerTrack = document.getElementById('ai-marker-track');
+                    if (markerTrack && TPP.createTimelineMarkers) {
+                        timelineMarkers = TPP.createTimelineMarkers({
+                            allPackets: allPackets,
+                            totalMs: header.timeMs,
+                            progressBar: progressBar,
+                            markerTrack: markerTrack,
+                            onSeek: function(timeMs) {
+                                player.seek(timeMs);
+                                updateProgressBar(timeMs, header.timeMs);
+                            }
+                        });
+                        timelineMarkers.updateHeatmap();
+                        // If a cached report with markers was already loaded, show them
+                        reportCache.get(rid).then(function(entry) {
+                            if (entry && entry.report && entry.report.markers && entry.report.markers.length > 0) {
+                                timelineMarkers.setMarkers(entry.report.markers);
+                            }
+                        });
+                    }
 
                     // Seek to first keyframe to get a clean initial frame (avoids garbled tiles)
                     var firstKfTime = -1;
@@ -580,6 +613,7 @@
                                     allPackets.sort(function (a, b) { return a.timeMs - b.timeMs; });
                                     player.updatePackets(allPackets, keyframes, header.timeMs);
                                     renderCorruptMarks(corruptedRanges, allPackets, header.timeMs);
+                                    if (timelineMarkers) timelineMarkers.updateHeatmap();
                                     setTimeout(function () { updateInfoPanel(); }, 500);
                                     downloadedFileCount = idx;
                                     if (idx >= header.datFileCount) {

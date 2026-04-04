@@ -54,9 +54,13 @@ TPP.createAISettings = function() {
     function testConnection(settings) {
         var endpoint = (settings.endpoint || '').replace(/\/+$/, '');
         if (settings.protocol === 'openai') {
-            if (endpoint.indexOf('/v1/chat/completions') === -1) endpoint += '/v1/chat/completions';
+            if (endpoint.indexOf('/v1/chat/completions') === -1) {
+                endpoint = endpoint.replace(/\/v1$/, '') + '/v1/chat/completions';
+            }
         } else {
-            if (endpoint.indexOf('/v1/messages') === -1) endpoint += '/v1/messages';
+            if (endpoint.indexOf('/v1/messages') === -1) {
+                endpoint = endpoint.replace(/\/v1$/, '') + '/v1/messages';
+            }
         }
 
         var headers, body;

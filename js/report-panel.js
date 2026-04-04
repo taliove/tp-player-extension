@@ -347,10 +347,73 @@ TPP.createReportPanel = function(opts) {
         bindTimeLinks(detail);
     }
 
-    // --- Final report rendering (from cache or after analysis) ---
+    // --- Verdict banner (compact view with expandable detail) ---
 
-    function renderReport(report) {
+    function verdictClass(report) {
+        var verdict = report.verdict || report.recommendation || '待定';
+        if (verdict === '通过') return 'pass';
+        if (verdict === '不通过') return 'fail';
+        return 'pending';
+    }
+
+    function renderVerdictBanner(report) {
         showResult();
+        var vClass = verdictClass(report);
+        var verdictText = escapeHtml(report.verdict || report.recommendation || '待定');
+        var oneLiner = report.one_liner || report.summary || '';
+        if (oneLiner.length > 50) oneLiner = oneLiner.substring(0, 50) + '...';
+        var scoreBadge = escapeHtml(String(report.score || '-'));
+
+        var html = '';
+
+        // Verdict banner
+        html += '<div class="ai-verdict-banner ai-verdict-' + vClass + '">';
+        html += '<div class="ai-verdict-main">';
+        html += '<span class="ai-verdict-score-badge">' + scoreBadge + '</span>';
+        html += '<span class="ai-verdict-text">' + verdictText + '</span>';
+        html += '<span class="ai-verdict-oneliner">' + escapeHtml(oneLiner) + '</span>';
+        html += '</div>';
+        html += '<button class="ai-verdict-expand-btn">展开详细报告 ▼</button>';
+        html += '</div>';
+
+        // Actions row (visible in banner view)
+        html += '<div class="ai-report-actions">';
+        html += '<button id="btn-ai-copy" class="ai-btn-secondary">复制报告</button>';
+        html += '<button id="btn-ai-export" class="ai-btn-secondary">导出 JSON</button>';
+        html += '<button id="btn-ai-rerun" class="ai-btn-secondary">重新分析</button>';
+        html += '<button id="btn-ai-settings-result" class="ai-btn-icon-sm" title="设置">&#9881;</button>';
+        html += '</div>';
+
+        // Hidden detail container
+        html += '<div class="ai-report-detail" style="display:none">';
+        html += '</div>';
+
+        resultDiv.innerHTML = html;
+
+        // Fill the detail container with the full report content
+        var detailContainer = resultDiv.querySelector('.ai-report-detail');
+        if (detailContainer) {
+            detailContainer.innerHTML = buildReportHtml(report);
+            bindTimeLinks(detailContainer);
+            bindPhaseCardToggles();
+        }
+
+        // Bind expand/collapse toggle
+        var expandBtn = resultDiv.querySelector('.ai-verdict-expand-btn');
+        if (expandBtn && detailContainer) {
+            expandBtn.addEventListener('click', function() {
+                var isHidden = detailContainer.style.display === 'none';
+                detailContainer.style.display = isHidden ? '' : 'none';
+                expandBtn.textContent = isHidden ? '收起 ▲' : '展开详细报告 ▼';
+            });
+        }
+
+        bindActionButtons(report);
+    }
+
+    // --- Build report HTML (shared by renderReport and renderVerdictBanner) ---
+
+    function buildReportHtml(report) {
         var html = '';
         var sc = scorePct(report.score);
         var sColor = scoreColor(report.score);
@@ -478,11 +541,21 @@ TPP.createReportPanel = function(opts) {
         html += escapeHtml(report.recommendation || '-');
         html += '</div>';
 
+        return html;
+    }
+
+    // --- Final report rendering (from cache or after analysis) ---
+
+    function renderReport(report) {
+        showResult();
+        var html = buildReportHtml(report);
+
         // Actions
         html += '<div class="ai-report-actions">';
         html += '<button id="btn-ai-copy" class="ai-btn-secondary">\u590d\u5236\u62a5\u544a</button>';
         html += '<button id="btn-ai-export" class="ai-btn-secondary">\u5bfc\u51fa JSON</button>';
         html += '<button id="btn-ai-rerun" class="ai-btn-secondary">\u91cd\u65b0\u5206\u6790</button>';
+        html += '<button id="btn-ai-settings-result" class="ai-btn-icon-sm" title="\u8bbe\u7f6e">&#9881;</button>';
         html += '</div>';
 
         resultDiv.innerHTML = html;
@@ -567,6 +640,13 @@ TPP.createReportPanel = function(opts) {
         if (btnRerun) {
             btnRerun.addEventListener('click', function() {
                 if (onStartAnalysis) onStartAnalysis();
+            });
+        }
+
+        var btnSettingsResult = document.getElementById('btn-ai-settings-result');
+        if (btnSettingsResult) {
+            btnSettingsResult.addEventListener('click', function() {
+                showSettings('result');
             });
         }
     }
@@ -684,7 +764,11 @@ TPP.createReportPanel = function(opts) {
     function loadCachedReport() {
         return reportCache.get(rid).then(function(entry) {
             if (entry && entry.report) {
-                renderReport(entry.report);
+                if (entry.report.markers) {
+                    renderVerdictBanner(entry.report);
+                } else {
+                    renderReport(entry.report);
+                }
                 return true;
             }
             return false;
@@ -700,7 +784,10 @@ TPP.createReportPanel = function(opts) {
     var importFile = document.getElementById('ai-import-file');
     var btnToggleKey = document.getElementById('btn-ai-toggle-key');
 
-    function showSettings() {
+    var settingsReturnTo = 'idle'; // 'idle' or 'result'
+
+    function showSettings(returnTo) {
+        settingsReturnTo = returnTo || 'idle';
         if (idleDiv) idleDiv.style.display = 'none';
         if (progressDiv) progressDiv.style.display = 'none';
         if (resultDiv) resultDiv.style.display = 'none';
@@ -720,10 +807,14 @@ TPP.createReportPanel = function(opts) {
 
     function hideSettings() {
         if (settingsPanel) settingsPanel.style.display = 'none';
-        showIdle();
+        if (settingsReturnTo === 'result') {
+            showResult();
+        } else {
+            showIdle();
+        }
     }
 
-    if (btnSettings) btnSettings.addEventListener('click', showSettings);
+    if (btnSettings) btnSettings.addEventListener('click', function() { showSettings('idle'); });
     if (btnCancelSettings) btnCancelSettings.addEventListener('click', hideSettings);
 
     if (btnSaveSettings) {
@@ -831,6 +922,7 @@ TPP.createReportPanel = function(opts) {
         renderSkeleton: renderSkeleton,
         updatePhaseCard: updatePhaseCard,
         renderReport: renderReport,
+        renderVerdictBanner: renderVerdictBanner,
         setDataReady: setDataReady,
         setAutoAnalyze: setAutoAnalyze,
         getAutoAnalyze: getAutoAnalyze,

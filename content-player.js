@@ -74,6 +74,7 @@
             extBase + 'js/report-cache.js',
             extBase + 'js/ai-analyzer.js',
             extBase + 'js/report-panel.js',
+            extBase + 'js/timeline-markers.js',
             extBase + 'js/host-resolver.js',
             extBase + 'js/cache-manager.js',
             extBase + 'js/downloader.js',
@@ -280,6 +281,7 @@
             + '    <div id="controls-row-1">'
             + '      <button id="btn-play" title="\u64ad\u653e/\u6682\u505c (Space)">\u25B6</button>'
             + '      <div id="progress-container">'
+            + '        <div id="ai-marker-track"></div>'
             + '        <div id="progress-bar">'
             + '          <div id="progress-played"></div>'
             + '          <div id="progress-handle"></div>'

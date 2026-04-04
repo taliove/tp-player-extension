@@ -131,6 +131,9 @@ TPP.createAIAnalyzer = function(opts) {
             return blobCanvas.convertToBlob({ type: 'image/jpeg', quality: TPP.AI_JPEG_QUALITY || 0.6 }).then(function(blob) {
                 return blobToBase64(blob);
             }).then(function(base64) {
+                if (!base64 || base64.length < 100) {
+                    console.warn('[AI] Frame at', point.timestampSec, 's produced empty/tiny base64:', base64 ? base64.length : 0, 'bytes');
+                }
                 results.push({
                     base64: base64,
                     timestamp_sec: point.timestampSec,
@@ -157,7 +160,7 @@ TPP.createAIAnalyzer = function(opts) {
         if (settings.protocol === 'openai') {
             var content = [];
             for (var i = 0; i < images.length; i++) {
-                content.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + images[i].base64, detail: 'high' } });
+                content.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + images[i].base64 } });
                 content.push({ type: 'text', text: '[' + formatTs(images[i].timestamp_sec) + '] ' + (images[i].label || '') });
             }
             content.push({ type: 'text', text: prompt });
@@ -181,14 +184,21 @@ TPP.createAIAnalyzer = function(opts) {
 
     function parseAPIResponse(text, protocol) {
         var data = JSON.parse(text);
+        var content;
         if (protocol === 'openai') {
-            return { text: data.choices[0].message.content, usage: data.usage };
+            content = data.choices[0].message.content;
+        } else {
+            content = '';
+            for (var i = 0; i < data.content.length; i++) {
+                if (data.content[i].type === 'text') content += data.content[i].text;
+            }
         }
-        var t = '';
-        for (var i = 0; i < data.content.length; i++) {
-            if (data.content[i].type === 'text') t += data.content[i].text;
+        // Detect vision model issues — model claims it can't see images
+        if (/未提供.*截图|无法.*查看.*图|I (?:can't|cannot) (?:see|view|access) (?:the |any )?image/i.test(content)) {
+            console.error('[AI] Model claims it cannot see images. Check: 1) model supports vision 2) base64 data is valid');
+            console.error('[AI] Response preview:', content.substring(0, 200));
         }
-        return { text: t, usage: data.usage };
+        return { text: content, usage: data.usage };
     }
 
     function parseVLResponse(text) {
@@ -212,14 +222,21 @@ TPP.createAIAnalyzer = function(opts) {
     function callVL(images, prompt, systemPrompt, settings) {
         var apiTimeoutMs = (settings.apiTimeoutSec || 60) * 1000;
         var endpoint = (settings.endpoint || '').replace(/\/+$/, '');
-        if (settings.protocol === 'claude' && endpoint.indexOf('/v1/messages') === -1) {
-            endpoint += '/v1/messages';
-        } else if (settings.protocol === 'openai' && endpoint.indexOf('/v1/chat/completions') === -1) {
-            endpoint += '/v1/chat/completions';
+        // Strip trailing /v1 to avoid double-path (e.g. user enters https://api.minimax.io/v1)
+        if (settings.protocol === 'claude') {
+            if (endpoint.indexOf('/v1/messages') === -1) {
+                endpoint = endpoint.replace(/\/v1$/, '') + '/v1/messages';
+            }
+        } else if (settings.protocol === 'openai') {
+            if (endpoint.indexOf('/v1/chat/completions') === -1) {
+                endpoint = endpoint.replace(/\/v1$/, '') + '/v1/chat/completions';
+            }
         }
 
         var req = buildRequestBody(images, prompt, systemPrompt, settings);
-        console.log('[AI] callVL: images:', images.length, 'body:', (req.body.length / 1024 / 1024).toFixed(1) + 'MB');
+        console.log('[AI] callVL → ' + endpoint);
+        console.log('[AI] callVL: images:', images.length, 'model:', settings.model,
+            'body:', (req.body.length / 1024 / 1024).toFixed(1) + 'MB');
 
         return TPP.extBridge.fetchProxy(endpoint, {
             method: 'POST',
@@ -228,8 +245,10 @@ TPP.createAIAnalyzer = function(opts) {
         }, apiTimeoutMs).then(function(resp) {
             if (resp && resp.error) throw new Error(resp.error);
             if (!resp || !resp.ok) {
+                console.error('[AI] API error:', resp ? resp.status : '?', resp ? resp.text.substring(0, 500) : 'no response');
                 throw new Error('API ' + (resp ? resp.status : '?') + ': ' + (resp ? resp.text : 'no response'));
             }
+            console.log('[AI] API response OK, length:', resp.text.length);
             return parseAPIResponse(resp.text, settings.protocol);
         });
     }
@@ -560,14 +579,81 @@ TPP.createAIAnalyzer = function(opts) {
             totalFrames += (l2Results[tf] && !l2Results[tf]._error) ? TPP.AI_L2_FRAMES_PER_PHASE : 0;
         }
 
+        // Merge markers from L1 + derive from L2 (suspicious + evidence_timestamps)
+        var allMarkers = [];
+        if (l1Result.markers) {
+            for (var mk = 0; mk < l1Result.markers.length; mk++) {
+                allMarkers.push(l1Result.markers[mk]);
+            }
+        }
+        // Derive markers from L2 suspicious behaviors
+        for (var lm = 0; lm < l2Results.length; lm++) {
+            var l2r = l2Results[lm];
+            if (!l2r || l2r._error) continue;
+            if (l2r.suspicious && l2r.suspicious.evidence_timestamps) {
+                var ets = l2r.suspicious.evidence_timestamps;
+                for (var se = 0; se < ets.length; se++) {
+                    allMarkers.push({
+                        time_sec: ets[se],
+                        type: 'suspicious',
+                        label: l2r.suspicious.description || '可疑行为'
+                    });
+                }
+            }
+            // Derive markers from L2 dimensions with low stars
+            if (l2r.dimensions) {
+                for (var ld = 0; ld < l2r.dimensions.length; ld++) {
+                    var ldim = l2r.dimensions[ld];
+                    if (ldim.stars <= 2 && ldim.evidence_timestamps && ldim.evidence_timestamps.length > 0) {
+                        allMarkers.push({
+                            time_sec: ldim.evidence_timestamps[0],
+                            type: 'stuck',
+                            label: ldim.name + ': ' + (ldim.comment || '').substring(0, 20)
+                        });
+                    }
+                }
+            }
+        }
+        // L3: mark confirmed deep checks
+        if (l3Results) {
+            for (var l3i = 0; l3i < l3Results.length; l3i++) {
+                var l3r = l3Results[l3i];
+                if (l3r.confirmed && l3r._timeRange) {
+                    allMarkers.push({
+                        time_sec: l3r._timeRange[0],
+                        type: 'suspicious',
+                        label: '已确认: ' + (l3r.description || '').substring(0, 20),
+                        confirmed: true
+                    });
+                }
+            }
+        }
+        // Deduplicate markers within 10 seconds of each other with same type
+        allMarkers.sort(function(a, b) { return a.time_sec - b.time_sec; });
+        var dedupedMarkers = [];
+        for (var dm = 0; dm < allMarkers.length; dm++) {
+            var dup = false;
+            for (var dp = 0; dp < dedupedMarkers.length; dp++) {
+                if (dedupedMarkers[dp].type === allMarkers[dm].type
+                    && Math.abs(dedupedMarkers[dp].time_sec - allMarkers[dm].time_sec) < 10) {
+                    dup = true;
+                    break;
+                }
+            }
+            if (!dup) dedupedMarkers.push(allMarkers[dm]);
+        }
+
         return {
             topic: l1Result.topic || '',
             tech_stack: l1Result.tech_stack || [],
             score: finalScore,
-            summary: l1Result.summary || '',
+            summary: l1Result.summary || l1Result.one_liner || '',
+            verdict: l1Result.verdict || null,
+            one_liner: l1Result.one_liner || l1Result.summary || '',
             recommendation: recommendation,
             dimensions: aggregatedDimensions,
             phases: phaseCards,
+            markers: dedupedMarkers,
             _meta: {
                 model: null,
                 tokens: totalTokens,

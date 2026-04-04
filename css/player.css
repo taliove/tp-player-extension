@@ -1731,6 +1731,10 @@ body > :not(#player-app):not(script) {
     font-size: 11px;
     padding: 6px 8px;
 }
+.ai-report-actions .ai-btn-icon-sm {
+    flex: 0 0 auto;
+    margin-left: 2px;
+}
 
 /* --- Time Links --- */
 
@@ -1899,4 +1903,162 @@ body > :not(#player-app):not(script) {
 #sidebar.wide .ai-settings-form > .ai-settings-radio,
 #sidebar.wide .ai-settings-form > .ai-settings-key-row {
     grid-column: 1 / -1;
+}
+
+/* --- AI Timeline Markers --- */
+
+#ai-marker-track {
+    position: relative;
+    height: 16px;
+    margin-bottom: 2px;
+    pointer-events: auto;
+}
+
+.ai-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 2;
+    transition: transform 0.15s;
+    border: 1.5px solid rgba(0,0,0,0.3);
+}
+.ai-marker:hover {
+    transform: translate(-50%, -50%) scale(1.5);
+}
+.ai-marker-progress { background: #4cd964; }
+.ai-marker-good { background: #5ac8fa; }
+.ai-marker-stuck { background: #ffcc02; }
+.ai-marker-suspicious { background: #ff3b30; }
+.ai-marker-info { background: rgba(255,255,255,0.5); }
+
+.ai-marker-duration {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    height: 3px;
+    transform: translateY(-50%);
+    border-radius: 1.5px;
+    opacity: 0.35;
+    pointer-events: none;
+}
+.ai-marker-stuck .ai-marker-duration { background: #ffcc02; }
+.ai-marker-suspicious .ai-marker-duration { background: #ff3b30; }
+
+/* --- AI Mini-Card --- */
+
+.ai-mini-card {
+    position: absolute;
+    z-index: 100;
+    background: var(--surface, #1e1e2e);
+    border: 1px solid var(--separator, rgba(255,255,255,0.1));
+    border-radius: 8px;
+    padding: 8px 12px;
+    min-width: 140px;
+    max-width: 240px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    pointer-events: auto;
+}
+.ai-mini-card-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: var(--text-primary, #e0e0e0);
+}
+.ai-mini-card-type {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.ai-mini-card-time {
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 11px;
+    color: var(--text-secondary, #999);
+    flex-shrink: 0;
+}
+.ai-mini-card-label {
+    color: var(--text-primary, #e0e0e0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ai-mini-card-play {
+    display: block;
+    width: 100%;
+    padding: 4px 0;
+    font-size: 11px;
+    color: var(--accent, #5ac8fa);
+    background: none;
+    border: none;
+    border-top: 1px solid var(--separator, rgba(255,255,255,0.1));
+    cursor: pointer;
+    text-align: center;
+}
+.ai-mini-card-play:hover {
+    color: #fff;
+}
+
+/* --- Verdict Banner --- */
+
+.ai-verdict-banner {
+    padding: 12px 14px;
+    border-radius: 10px;
+    margin-bottom: 8px;
+}
+.ai-verdict-pass { background: rgba(76, 217, 100, 0.12); border: 1px solid rgba(76, 217, 100, 0.25); }
+.ai-verdict-fail { background: rgba(255, 59, 48, 0.12); border: 1px solid rgba(255, 59, 48, 0.25); }
+.ai-verdict-pending { background: rgba(255, 204, 2, 0.10); border: 1px solid rgba(255, 204, 2, 0.2); }
+
+.ai-verdict-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.ai-verdict-score-badge {
+    font-size: 18px;
+    font-weight: 700;
+    min-width: 32px;
+    text-align: center;
+}
+.ai-verdict-pass .ai-verdict-score-badge { color: #4cd964; }
+.ai-verdict-fail .ai-verdict-score-badge { color: #ff3b30; }
+.ai-verdict-pending .ai-verdict-score-badge { color: #ffcc02; }
+
+.ai-verdict-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary, #e0e0e0);
+}
+.ai-verdict-oneliner {
+    font-size: 12px;
+    color: var(--text-secondary, #999);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ai-verdict-expand-btn {
+    display: block;
+    width: 100%;
+    padding: 4px 0;
+    font-size: 11px;
+    color: var(--text-tertiary, #666);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: center;
+}
+.ai-verdict-expand-btn:hover {
+    color: var(--text-primary, #e0e0e0);
+}
+
+.ai-report-detail {
+    margin-top: 8px;
 }
