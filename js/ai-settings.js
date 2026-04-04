@@ -8,17 +8,19 @@ TPP.createAISettings = function() {
         apiKey: '',
         model: 'claude-sonnet-4-6',
         autoAnalyze: false,
-        endSegmentMinutes: 5,
-        maxFrames: 80,
-        apiTimeoutSec: 120,
-        skipStartSec: 300,
-        currentTemplate: 'backend'
+        apiTimeoutSec: 60
     };
 
     function load() {
         return TPP.extBridge.storageGet(STORAGE_KEY).then(function(result) {
             var saved = result[STORAGE_KEY];
-            return Object.assign({}, defaults, saved || {});
+            var merged = Object.assign({}, defaults, saved || {});
+            // Remove deprecated fields from stored data
+            delete merged.currentTemplate;
+            delete merged.maxFrames;
+            delete merged.endSegmentMinutes;
+            delete merged.skipStartSec;
+            return merged;
         });
     }
 
@@ -52,9 +54,13 @@ TPP.createAISettings = function() {
     function testConnection(settings) {
         var endpoint = (settings.endpoint || '').replace(/\/+$/, '');
         if (settings.protocol === 'openai') {
-            if (endpoint.indexOf('/v1/chat/completions') === -1) endpoint += '/v1/chat/completions';
+            if (endpoint.indexOf('/v1/chat/completions') === -1) {
+                endpoint = endpoint.replace(/\/v1$/, '') + '/v1/chat/completions';
+            }
         } else {
-            if (endpoint.indexOf('/v1/messages') === -1) endpoint += '/v1/messages';
+            if (endpoint.indexOf('/v1/messages') === -1) {
+                endpoint = endpoint.replace(/\/v1$/, '') + '/v1/messages';
+            }
         }
 
         var headers, body;
