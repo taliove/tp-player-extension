@@ -8,6 +8,12 @@
     "host_permissions": ["https://api.anthropic.com/*", "https://api.openai.com/*", "*://*/*"],
     "content_scripts": [
         {
+            "matches": ["*://*/audit/*", "*://*/ops/*", "*://*/asset/*", "*://*/user/*", "*://*/system/*", "*://*/dashboard*"],
+            "js": ["js/assist-block.js"],
+            "run_at": "document_start",
+            "world": "MAIN"
+        },
+        {
             "matches": ["*://*/audit/record*"],
             "js": ["content-list.js"],
             "css": ["css/list.css"],
