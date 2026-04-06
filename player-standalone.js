@@ -1,12 +1,14 @@
 // Teleport Assessment Reviewer — Standalone Player Init
 // Sets __TP_RID from URL params, reads server URL from chrome.storage,
 // sets __TP_SERVER, then dynamically loads app.js.
+// Handles switch-recording messages for single-tab reuse.
 (function() {
     'use strict';
 
     // Set RID from URL params (inline scripts are blocked by extension CSP)
     var params = new URLSearchParams(location.search);
     window.__TP_RID = params.get('rid') || '';
+    window.__TP_FROM_EXT = params.get('from') === 'ext';
     document.title = window.__TP_RID ? ('RDP 录屏 #' + window.__TP_RID) : 'RDP 录屏回放';
 
     if (!window.__TP_RID) {
@@ -43,15 +45,35 @@
         document.body.appendChild(script);
     });
 
-    // Override "返回列表" behavior: close tab instead of navigating
-    var backBtn = document.getElementById('menu-back-list');
-    if (backBtn) {
-        backBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            e.preventDefault();
-            window.close();
-        }, true);
+    // --- Get own tab ID for targeted messaging ---
+    var ownTabId = null;
+    if (chrome.tabs && chrome.tabs.getCurrent) {
+        chrome.tabs.getCurrent(function(tab) {
+            if (tab) ownTabId = tab.id;
+        });
     }
+
+    // --- Switch-recording message handler (for single-tab reuse) ---
+    chrome.runtime.onMessage.addListener(function(message) {
+        if (!message || message.type !== 'switch-recording') return;
+        // Ignore messages targeting other tabs
+        if (message.targetTabId && ownTabId && message.targetTabId !== ownTabId) return;
+        var newRid = message.rid;
+        if (!newRid || String(newRid) === String(window.__TP_RID)) return;
+
+        if (typeof window.__TP_RESET === 'function') {
+            // Hot-reload: app.js exposes resetPlayer
+            try {
+                window.__TP_RESET(newRid);
+            } catch (e) {
+                console.error('[Player] resetPlayer failed, falling back to reload:', e);
+                location.replace('player.html?rid=' + newRid + '&from=ext');
+            }
+        } else {
+            // Fallback: full page reload
+            location.replace('player.html?rid=' + newRid + '&from=ext');
+        }
+    });
 
     // Handle auth expiry
     window.addEventListener('tp-auth-expired', function() {

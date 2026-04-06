@@ -28,6 +28,8 @@
     var selectedTopics = []; // empty = all topics (no filter)
     var contextMenuRid = null;
     var searchTimeout = null;
+    var activePlayerTabId = null;
+    var activeRecordId = null;
     var topicDropdown = document.getElementById('sp-topic-dropdown');
     var topicList = document.getElementById('sp-topic-list');
     var topicTab = document.getElementById('sp-tab-topic');
@@ -328,7 +330,7 @@
 
     function createCard(data) {
         var card = document.createElement('div');
-        card.className = 'sp-card';
+        card.className = 'sp-card' + (data.recordId === activeRecordId ? ' sp-card-playing' : '');
         card.setAttribute('data-rid', data.recordId);
 
         var isLong = data.durationSec >= DURATION_THRESHOLD_MIN * 60;
@@ -373,17 +375,42 @@
             + '  <button class="sp-card-more" title="更多">&middot;&middot;&middot;</button>'
             + '</div>';
 
-        // Click card -> open player
+        // Click card -> open/reuse player tab
         card.addEventListener('click', function(e) {
             if (e.target.closest('.sp-card-more')) return;
             if (data.isActive) return;
             if (data.protocolType !== 1) return; // Only RDP
-            var playerUrl = chrome.runtime.getURL('player.html') + '?rid=' + data.recordId;
-            // Use window.open as fallback if chrome.tabs isn't available in side panel
-            try {
-                chrome.tabs.create({ url: playerUrl });
-            } catch (err) {
-                window.open(playerUrl, '_blank');
+
+            var newTab = e.ctrlKey || e.metaKey || e.button === 1;
+            var playerUrl = chrome.runtime.getURL('player.html') + '?rid=' + data.recordId + '&from=ext';
+
+            if (newTab) {
+                // Ctrl/Cmd+Click or middle-click: always new tab
+                try { chrome.tabs.create({ url: playerUrl }); }
+                catch (err) { window.open(playerUrl, '_blank'); }
+                return;
+            }
+
+            // Default: reuse existing player tab
+            if (activePlayerTabId !== null) {
+                chrome.tabs.get(activePlayerTabId, function(tab) {
+                    if (chrome.runtime.lastError || !tab) {
+                        // Tab was closed, create new
+                        openNewPlayerTab(playerUrl, data.recordId);
+                    } else {
+                        // Tab exists, send switch message and focus it
+                        chrome.runtime.sendMessage({
+                            type: 'switch-recording',
+                            rid: data.recordId,
+                            targetTabId: activePlayerTabId
+                        });
+                        chrome.tabs.update(activePlayerTabId, { active: true });
+                        activeRecordId = data.recordId;
+                        renderCards();
+                    }
+                });
+            } else {
+                openNewPlayerTab(playerUrl, data.recordId);
             }
         });
 
@@ -395,6 +422,29 @@
         });
 
         return card;
+    }
+
+    function openNewPlayerTab(url, recordId) {
+        try {
+            chrome.tabs.create({ url: url }, function(tab) {
+                if (tab) activePlayerTabId = tab.id;
+                activeRecordId = recordId;
+                renderCards();
+            });
+        } catch (err) {
+            window.open(url, '_blank');
+        }
+    }
+
+    // Listen for tab close to clear activePlayerTabId
+    if (chrome.tabs && chrome.tabs.onRemoved) {
+        chrome.tabs.onRemoved.addListener(function(tabId) {
+            if (tabId === activePlayerTabId) {
+                activePlayerTabId = null;
+                activeRecordId = null;
+                renderCards();
+            }
+        });
     }
 
     // --- Context menu ---
@@ -475,6 +525,20 @@
         for (var i = 0; i < allRecords.length; i++) {
             if (allRecords[i].date && allRecords[i].date.indexOf(todayStart) === 0) todayCount++;
             if (!notesCache[allRecords[i].recordId] || !notesCache[allRecords[i].recordId].tag) pendingCount++;
+        }
+
+        // Show "now playing" info if a recording is active
+        if (activeRecordId) {
+            var activeRecord = allRecords.find(function(r) { return r.recordId === activeRecordId; });
+            if (activeRecord) {
+                var hostName = hostCache[activeRecord.hostIp] || '';
+                var parsed = TPP.parseHostNameStr(hostName);
+                var info = activeRecord.user.display;
+                if (parsed && parsed.topic) info += ' — ' + parsed.topic;
+                statToday.textContent = '▶ ' + info;
+                statPending.textContent = '';
+                return;
+            }
         }
         statToday.textContent = '今日: ' + todayCount + '条';
         statPending.textContent = '待审: ' + pendingCount + '条';
