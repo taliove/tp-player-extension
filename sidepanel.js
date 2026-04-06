@@ -2,6 +2,9 @@
 (function() {
     'use strict';
 
+    // --- Sidebar port (for player sidebar auto-collapse detection) ---
+    try { chrome.runtime.connect({ name: 'sidebar' }); } catch(e) {}
+
     var DURATION_THRESHOLD_MIN = 58;
     var NOTES_KEY = 'tp_player_notes';
 

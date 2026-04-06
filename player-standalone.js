@@ -45,12 +45,56 @@
         document.body.appendChild(script);
     });
 
-    // --- Get own tab ID for targeted messaging ---
+    // --- Player port for sidebar detection + tab ID ---
     var ownTabId = null;
     if (chrome.tabs && chrome.tabs.getCurrent) {
         chrome.tabs.getCurrent(function(tab) {
             if (tab) ownTabId = tab.id;
+            // Connect with tab-specific port name
+            connectPlayerPort(tab ? tab.id : 0);
         });
+    } else {
+        connectPlayerPort(0);
+    }
+
+    function connectPlayerPort(tabId) {
+        try {
+            var port = chrome.runtime.connect({ name: 'player-' + tabId });
+            port.onMessage.addListener(function(msg) {
+                if (msg.type === 'sidebar-state') {
+                    autoCollapseSidebar(msg.open);
+                }
+            });
+        } catch(e) {
+            console.warn('[Player] Port connection failed:', e);
+        }
+    }
+
+    // --- Auto-collapse player sidebar when extension sidebar is open ---
+    function autoCollapseSidebar(sidebarOpen) {
+        var sidebar = document.getElementById('sidebar');
+        var expandBtn = document.getElementById('btn-sidebar-expand');
+        var resizeHandle = document.getElementById('sidebar-resize-handle');
+        if (!sidebar) return;
+
+        if (sidebarOpen) {
+            // Extension sidebar is open — collapse player sidebar for more canvas space
+            sidebar.style.display = 'none';
+            if (expandBtn) expandBtn.style.display = '';
+            if (resizeHandle) resizeHandle.style.display = 'none';
+            // Trigger zoom resize to fill the space
+            if (window.__TP_ZOOM) {
+                try { window.__TP_ZOOM.handleResize(); } catch(e) {}
+            }
+        } else {
+            // Extension sidebar closed — restore player sidebar
+            sidebar.style.display = '';
+            if (expandBtn) expandBtn.style.display = '';
+            if (resizeHandle) resizeHandle.style.display = '';
+            if (window.__TP_ZOOM) {
+                try { window.__TP_ZOOM.handleResize(); } catch(e) {}
+            }
+        }
     }
 
     // --- Switch-recording message handler (for single-tab reuse) ---
