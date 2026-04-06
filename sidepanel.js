@@ -25,8 +25,12 @@
     var notesCache = {};
     var activeFilter = 'all';
     var searchQuery = '';
+    var selectedTopics = []; // empty = all topics (no filter)
     var contextMenuRid = null;
     var searchTimeout = null;
+    var topicDropdown = document.getElementById('sp-topic-dropdown');
+    var topicList = document.getElementById('sp-topic-list');
+    var topicTab = document.getElementById('sp-tab-topic');
 
     // --- Init ---
     chrome.storage.local.get('tp_auth_state', function(data) {
@@ -69,6 +73,7 @@
             allRecords = normalizeRecords(results[0].data || []);
             hostCache = results[1];
             loadNotes();
+            buildTopicDropdown();
             renderCards();
         }).catch(function(err) {
             if (err.message === 'AUTH_EXPIRED') {
@@ -138,7 +143,36 @@
         cardList.innerHTML = '';
 
         if (filtered.length === 0) {
-            showState('empty');
+            // Show filter-aware empty state
+            var hasActiveFilter = activeFilter !== 'all' || searchQuery || selectedTopics.length > 0;
+            if (hasActiveFilter && allRecords.length > 0) {
+                showState('empty');
+                var emptyEl = document.getElementById('sp-empty');
+                emptyEl.querySelector('.sp-state-text').textContent = '没有匹配的录像记录';
+                var clearBtn = document.getElementById('btn-empty-refresh');
+                clearBtn.textContent = '清除筛选';
+                clearBtn.onclick = function() {
+                    // Reset all filters
+                    activeFilter = 'all';
+                    searchQuery = '';
+                    searchInput.value = '';
+                    searchBar.style.display = 'none';
+                    selectedTopics = [];
+                    chrome.storage.local.set({ tp_filter_topic: [] });
+                    updateTopicCheckboxes();
+                    topicTab.classList.remove('has-filter');
+                    var allTabs = document.querySelectorAll('.sp-tab:not(.sp-tab-topic)');
+                    allTabs.forEach(function(t) { t.classList.remove('active'); });
+                    allTabs[0].classList.add('active');
+                    renderCards();
+                };
+            } else {
+                showState('empty');
+                document.getElementById('sp-empty').querySelector('.sp-state-text').textContent = '暂无会话记录';
+                var refreshBtn = document.getElementById('btn-empty-refresh');
+                refreshBtn.textContent = '刷新';
+                refreshBtn.onclick = function() { fetchRecords(); };
+            }
             return;
         }
 
@@ -150,6 +184,102 @@
 
         updateStats();
     }
+
+    // --- Topic filter dropdown ---
+    function buildTopicDropdown() {
+        var topics = {};
+        var hasOther = false;
+        var ips = Object.keys(hostCache);
+        for (var i = 0; i < ips.length; i++) {
+            var parsed = TPP.parseHostNameStr(hostCache[ips[i]]);
+            if (parsed && parsed.topic) {
+                var key = parsed.topic + (parsed.role ? '（' + parsed.role + '）' : '');
+                topics[key] = true;
+            } else {
+                hasOther = true;
+            }
+        }
+
+        topicList.innerHTML = '';
+        var keys = Object.keys(topics).sort();
+        for (var j = 0; j < keys.length; j++) {
+            var label = document.createElement('label');
+            label.className = 'sp-topic-option';
+            label.innerHTML = '<input type="checkbox" value="' + TPP.escapeHtml(keys[j]) + '"><span>' + TPP.escapeHtml(keys[j]) + '</span>';
+            topicList.appendChild(label);
+        }
+        if (hasOther) {
+            var divider = document.createElement('div');
+            divider.className = 'sp-topic-divider';
+            topicList.appendChild(divider);
+            var otherLabel = document.createElement('label');
+            otherLabel.className = 'sp-topic-option';
+            otherLabel.innerHTML = '<input type="checkbox" value="__other__"><span>其他</span>';
+            topicList.appendChild(otherLabel);
+        }
+
+        // Restore saved filter state
+        chrome.storage.local.get('tp_filter_topic', function(data) {
+            if (data.tp_filter_topic && Array.isArray(data.tp_filter_topic) && data.tp_filter_topic.length > 0) {
+                selectedTopics = data.tp_filter_topic;
+                updateTopicCheckboxes();
+                topicTab.classList.add('has-filter');
+                renderCards();
+            }
+        });
+    }
+
+    function updateTopicCheckboxes() {
+        var allCheckbox = topicDropdown.querySelector('input[value="__all__"]');
+        var checkboxes = topicList.querySelectorAll('input[type="checkbox"]');
+        if (selectedTopics.length === 0) {
+            allCheckbox.checked = true;
+            for (var i = 0; i < checkboxes.length; i++) checkboxes[i].checked = false;
+        } else {
+            allCheckbox.checked = false;
+            for (var j = 0; j < checkboxes.length; j++) {
+                checkboxes[j].checked = selectedTopics.indexOf(checkboxes[j].value) !== -1;
+            }
+        }
+    }
+
+    // "全部岗位" checkbox
+    topicDropdown.querySelector('input[value="__all__"]').addEventListener('change', function() {
+        selectedTopics = [];
+        updateTopicCheckboxes();
+        topicTab.classList.remove('has-filter');
+        chrome.storage.local.set({ tp_filter_topic: [] });
+        renderCards();
+    });
+
+    // Individual topic checkboxes (delegated)
+    topicList.addEventListener('change', function(e) {
+        if (e.target.type !== 'checkbox') return;
+        var val = e.target.value;
+        if (e.target.checked) {
+            if (selectedTopics.indexOf(val) === -1) selectedTopics.push(val);
+        } else {
+            selectedTopics = selectedTopics.filter(function(t) { return t !== val; });
+        }
+        updateTopicCheckboxes();
+        topicTab.classList.toggle('has-filter', selectedTopics.length > 0);
+        chrome.storage.local.set({ tp_filter_topic: selectedTopics });
+        renderCards();
+    });
+
+    // Topic tab click toggles dropdown visibility
+    topicTab.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var visible = topicDropdown.style.display !== 'none';
+        topicDropdown.style.display = visible ? 'none' : '';
+    });
+
+    // Close dropdown when clicking elsewhere
+    document.addEventListener('click', function(e) {
+        if (!topicDropdown.contains(e.target) && e.target !== topicTab) {
+            topicDropdown.style.display = 'none';
+        }
+    });
 
     function filterRecords(records) {
         var result = records;
@@ -168,6 +298,17 @@
         } else if (activeFilter === 'tagged') {
             result = result.filter(function(r) {
                 return notesCache[r.recordId] && notesCache[r.recordId].tag;
+            });
+        }
+
+        // Apply topic filter
+        if (selectedTopics.length > 0) {
+            result = result.filter(function(r) {
+                var hostName = hostCache[r.hostIp] || '';
+                var parsed = TPP.parseHostNameStr(hostName);
+                if (!parsed) return selectedTopics.indexOf('__other__') !== -1;
+                var topicKey = parsed.topic + (parsed.role ? '（' + parsed.role + '）' : '');
+                return selectedTopics.indexOf(topicKey) !== -1;
             });
         }
 
@@ -340,7 +481,7 @@
     }
 
     // --- Filter tabs ---
-    var tabs = document.querySelectorAll('.sp-tab');
+    var tabs = document.querySelectorAll('.sp-tab:not(.sp-tab-topic)');
     tabs.forEach(function(tab) {
         tab.addEventListener('click', function() {
             tabs.forEach(function(t) { t.classList.remove('active'); });
@@ -371,6 +512,15 @@
     document.getElementById('btn-empty-refresh').addEventListener('click', function() { fetchRecords(); });
     document.getElementById('btn-error-retry').addEventListener('click', function() { fetchRecords(); });
 
+    // --- Header title -> open Teleport main page ---
+    document.getElementById('sp-header-title').addEventListener('click', function() {
+        chrome.storage.local.get('tp_server_url', function(data) {
+            if (data.tp_server_url) {
+                chrome.tabs.create({ url: data.tp_server_url });
+            }
+        });
+    });
+
     // --- Unauth -> login ---
     document.getElementById('btn-go-login').addEventListener('click', function() {
         chrome.action.setPopup({ popup: 'popup.html' });
@@ -395,5 +545,68 @@
                 showState('unauth');
             }
         }
+    });
+
+    // --- Settings panel ---
+    var spSettings = document.getElementById('sp-settings');
+    var spSettingsUrl = document.getElementById('sp-settings-url');
+    var spSettingsUsername = document.getElementById('sp-settings-username');
+    var spSettingsPassword = document.getElementById('sp-settings-password');
+    var spSettingsError = document.getElementById('sp-settings-error');
+    var spSettingsSuccess = document.getElementById('sp-settings-success');
+
+    document.getElementById('btn-settings').addEventListener('click', function() {
+        spSettingsError.style.display = 'none';
+        spSettingsSuccess.style.display = 'none';
+        chrome.storage.local.get(['tp_server_url', 'tp_username'], function(data) {
+            spSettingsUrl.value = data.tp_server_url || '';
+            spSettingsUsername.value = data.tp_username || '';
+            spSettingsPassword.value = '';
+            spSettingsPassword.placeholder = '••••••••';
+        });
+        spSettings.style.display = '';
+    });
+
+    document.getElementById('btn-settings-back').addEventListener('click', function() {
+        spSettings.style.display = 'none';
+    });
+
+    document.getElementById('btn-sp-settings-save').addEventListener('click', function() {
+        var url = spSettingsUrl.value.trim();
+        var username = spSettingsUsername.value.trim();
+        var password = spSettingsPassword.value;
+
+        if (!url) { spSettingsError.textContent = '请输入服务器地址'; spSettingsError.style.display = ''; return; }
+        if (!username) { spSettingsError.textContent = '请输入用户名'; spSettingsError.style.display = ''; return; }
+
+        if (!/^https?:\/\//.test(url)) url = 'https://' + url;
+        url = url.replace(/\/+$/, '');
+
+        var saveBtn = document.getElementById('btn-sp-settings-save');
+        saveBtn.disabled = true;
+        spSettingsError.style.display = 'none';
+        spSettingsSuccess.style.display = 'none';
+
+        chrome.runtime.sendMessage({
+            type: 'update-settings',
+            url: url,
+            username: username,
+            password: password || null
+        }, function(response) {
+            saveBtn.disabled = false;
+            if (response && response.success) {
+                spSettingsSuccess.style.display = '';
+                setTimeout(function() { spSettings.style.display = 'none'; }, 1000);
+            } else {
+                spSettingsError.textContent = response && response.error ? response.error : '认证失败，已恢复原配置';
+                spSettingsError.style.display = '';
+            }
+        });
+    });
+
+    document.getElementById('btn-sp-logout').addEventListener('click', function() {
+        chrome.runtime.sendMessage({ type: 'logout' }, function() {
+            spSettings.style.display = 'none';
+        });
     });
 })();

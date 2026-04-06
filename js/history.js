@@ -1,43 +1,71 @@
 // Teleport RDP Web Player — Play History Module
-// Stores last 20 played recordings in localStorage.
+// Stores last 20 played recordings in chrome.storage.local (shared across all extension contexts).
+// Uses in-memory cache for synchronous reads, async writeback for persistence.
 
 TPP.createHistory = function () {
     var HISTORY_KEY = 'tp_play_history';
     var MAX_ENTRIES = 20;
+    var cache = [];
+    var readyCallbacks = [];
+    var isReady = false;
 
-    function readAll() {
-        try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
-        catch (e) { return []; }
+    // Async load from chrome.storage.local
+    TPP.extBridge.storageGet(HISTORY_KEY).then(function (data) {
+        cache = data[HISTORY_KEY] || [];
+        // One-time migration from localStorage
+        try {
+            var old = JSON.parse(localStorage.getItem(HISTORY_KEY));
+            if (Array.isArray(old) && old.length > 0 && cache.length === 0) {
+                cache = old;
+                flush();
+                localStorage.removeItem(HISTORY_KEY);
+                console.log('[History] Migrated', cache.length, 'entries from localStorage');
+            }
+        } catch (e) { /* localStorage not available or corrupt */ }
+        isReady = true;
+        for (var i = 0; i < readyCallbacks.length; i++) readyCallbacks[i]();
+        readyCallbacks = [];
+    });
+
+    // Sync changes from other contexts
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+        chrome.storage.onChanged.addListener(function (changes, area) {
+            if (area === 'local' && changes[HISTORY_KEY]) {
+                cache = changes[HISTORY_KEY].newValue || [];
+            }
+        });
     }
 
-    function writeAll(data) {
-        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(data)); }
-        catch (e) { /* quota */ }
+    function flush() {
+        var data = {};
+        data[HISTORY_KEY] = cache;
+        TPP.extBridge.storageSet(data);
     }
 
     function add(entry) {
         // entry: { rid, user, duration, date, timestamp }
-        var list = readAll();
-        // Remove existing entry for same rid
-        list = list.filter(function (item) { return String(item.rid) !== String(entry.rid); });
-        // Add to front
-        list.unshift(entry);
-        // Trim to max
-        if (list.length > MAX_ENTRIES) list = list.slice(0, MAX_ENTRIES);
-        writeAll(list);
+        cache = cache.filter(function (item) { return String(item.rid) !== String(entry.rid); });
+        cache.unshift(entry);
+        if (cache.length > MAX_ENTRIES) cache = cache.slice(0, MAX_ENTRIES);
+        flush();
     }
 
     function getAll() {
-        return readAll();
+        return cache;
     }
 
     function clear() {
-        writeAll([]);
+        cache = [];
+        flush();
     }
 
     return {
         add: add,
         getAll: getAll,
         clear: clear,
+        onReady: function (cb) {
+            if (isReady) cb();
+            else readyCallbacks.push(cb);
+        }
     };
 };

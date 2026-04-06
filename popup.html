@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=360">
     <title>Teleport Assessment Reviewer</title>
+    <link rel="stylesheet" href="css/tokens.css">
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -25,10 +26,13 @@
             <label class="popup-label">密码</label>
             <input type="password" id="input-password" class="popup-input" placeholder="请输入密码" autocomplete="current-password">
 
-            <label class="popup-label">验证码</label>
-            <div class="popup-captcha-row">
-                <input type="text" id="input-captcha" class="popup-input popup-captcha-input" placeholder="请输入验证码" autocomplete="off">
-                <img id="captcha-img" class="popup-captcha-img" alt="验证码" title="点击刷新">
+            <div id="captcha-group" style="display:none">
+                <label class="popup-label">验证码</label>
+                <div class="popup-captcha-row">
+                    <input type="text" id="input-captcha" class="popup-input popup-captcha-input" placeholder="请输入验证码" autocomplete="off">
+                    <div id="captcha-spinner" class="popup-captcha-spinner" style="display:none"></div>
+                    <img id="captcha-img" class="popup-captcha-img" alt="验证码" title="点击刷新" style="display:none">
+                </div>
             </div>
 
             <label class="popup-checkbox">
@@ -67,7 +71,32 @@
 
         <div class="popup-actions">
             <button id="btn-open-panel" class="popup-btn-primary">打开侧边栏</button>
+            <button id="btn-settings" class="popup-btn-tertiary">设置</button>
             <button id="btn-logout" class="popup-btn-secondary">退出登录</button>
+        </div>
+    </div>
+
+    <!-- Settings view (edit server/credentials) -->
+    <div id="view-settings" style="display:none">
+        <div class="popup-header">
+            <button id="btn-settings-back" class="popup-back-btn">&larr;</button>
+            <div class="popup-title">设置</div>
+        </div>
+
+        <div class="popup-form">
+            <label class="popup-label">服务器地址</label>
+            <input type="url" id="settings-url" class="popup-input" placeholder="https://teleport.company.com" autocomplete="url">
+
+            <label class="popup-label">用户名</label>
+            <input type="text" id="settings-username" class="popup-input" placeholder="请输入用户名" autocomplete="username">
+
+            <label class="popup-label">密码</label>
+            <input type="password" id="settings-password" class="popup-input" placeholder="••••••••" autocomplete="new-password">
+
+            <button id="btn-settings-save" class="popup-btn-primary">保存</button>
+
+            <div id="settings-error" class="popup-error" style="display:none"></div>
+            <div id="settings-success" class="popup-success" style="display:none">设置已更新</div>
         </div>
     </div>
 

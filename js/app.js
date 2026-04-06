@@ -813,6 +813,6 @@
     }
 
     init();
-    initNotes();
+    notes.onReady(initNotes);
     initAIPanel();
 })();

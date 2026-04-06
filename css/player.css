@@ -13,29 +13,8 @@ html {
     height: 100%;
 }
 
-/* === Design Tokens === */
+/* === Design Tokens (player-specific, shared tokens in css/tokens.css) === */
 :root {
-    --bg-primary: #1c1c1e;
-    --bg-secondary: #2c2c2e;
-    --bg-tertiary: #3a3a3c;
-    --bg-elevated: rgba(44, 44, 46, 0.82);
-    --accent: #0a84ff;
-    --accent-hover: #409cff;
-    --accent-active: #0071e3;
-    --text-primary: rgba(255, 255, 255, 0.92);
-    --text-secondary: rgba(255, 255, 255, 0.55);
-    --text-tertiary: rgba(255, 255, 255, 0.30);
-    --separator: rgba(255, 255, 255, 0.10);
-    --danger: #ff453a;
-    --warning: #ff9f0a;
-    --success: #30d158;
-    --radius-sm: 6px;
-    --radius-md: 8px;
-    --radius-lg: 10px;
-    --radius-pill: 100px;
-    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25);
-    --transition: 0.2s ease;
     --score-excellent: #34d399;
     --score-good: #60a5fa;
     --score-medium: #fbbf24;
