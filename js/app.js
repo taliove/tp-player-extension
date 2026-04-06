@@ -42,12 +42,7 @@
     var shortcutHint = document.getElementById('shortcut-hint');
 
     // --- New DOM references ---
-    var menuMeta = document.getElementById('menu-meta');
-    var menuFile = document.getElementById('menu-file');
-    var menuHistory = document.getElementById('menu-history');
-    var menuHelp = document.getElementById('menu-help');
-    var historyList = document.getElementById('history-list');
-    var historyEmpty = document.getElementById('history-empty');
+    var menuMeta = document.getElementById('info-bar-meta');
     var noteTags = document.getElementById('note-tags');
     var noteText = document.getElementById('note-text');
     var infoList = document.getElementById('info-list');
@@ -219,87 +214,37 @@
         }, 3000);
     }
 
-    // --- Menu dropdown logic ---
-    function closeAllMenus() {
-        var items = document.querySelectorAll('.menu-item');
-        for (var i = 0; i < items.length; i++) items[i].classList.remove('open');
-    }
-
-    function toggleMenu(menuItem) {
-        var isOpen = menuItem.classList.contains('open');
-        closeAllMenus();
-        if (!isOpen) menuItem.classList.add('open');
-    }
-
-    menuFile.querySelector('.menu-label').addEventListener('click', function (e) {
-        e.stopPropagation();
-        toggleMenu(menuFile);
-    });
-    menuHistory.querySelector('.menu-label').addEventListener('click', function (e) {
-        e.stopPropagation();
-        populateHistory();
-        toggleMenu(menuHistory);
-    });
-    menuHelp.querySelector('.menu-label').addEventListener('click', function (e) {
-        e.stopPropagation();
-        toggleMenu(menuHelp);
-    });
-
-    document.addEventListener('click', function () { closeAllMenus(); });
-
-    var dropdowns = document.querySelectorAll('.menu-dropdown');
-    for (var di = 0; di < dropdowns.length; di++) {
-        dropdowns[di].addEventListener('click', function (e) { e.stopPropagation(); });
-    }
-
-    document.getElementById('menu-back-list').addEventListener('click', function () {
-        closeAllMenus();
-        window.location.href = '/audit/record';
-    });
-
-    document.getElementById('menu-clear-cache-current').addEventListener('click', function () {
-        if (!cacheManager) { showToast('缓存不可用', 'warning'); closeAllMenus(); return; }
-        cacheManager.clearCurrent().then(function () {
-            showToast('当前录像缓存已清除', 'info');
-            updateInfoPanel();
-        });
-        closeAllMenus();
-    });
-
-    document.getElementById('menu-clear-cache-all').addEventListener('click', function () {
-        if (!cacheManager) { showToast('缓存不可用', 'warning'); closeAllMenus(); return; }
-        cacheManager.clearAll().then(function () {
-            showToast('所有缓存已清除', 'info');
-            updateInfoPanel();
-        });
-        closeAllMenus();
-    });
-
-    document.getElementById('menu-show-shortcuts').addEventListener('click', function () {
-        closeAllMenus();
-    });
-
-    // --- History panel ---
-    function populateHistory() {
-        var items = history.getAll();
-        historyList.innerHTML = '';
-        historyEmpty.style.display = items.length === 0 ? 'block' : 'none';
-        for (var i = 0; i < items.length; i++) {
-            (function (item) {
-                var div = document.createElement('div');
-                div.className = 'history-item' + (String(item.rid) === String(rid) ? ' current' : '');
-                div.innerHTML = ''
-                    + '<span class="history-item-user">' + TPP.escapeHtml(item.user || 'Unknown') + '</span>'
-                    + '<span class="history-item-meta">' + TPP.escapeHtml(item.duration || '') + ' | ' + TPP.escapeHtml(item.date || '') + '</span>';
-                div.addEventListener('click', function () {
-                    closeAllMenus();
-                    if (String(item.rid) === String(rid)) return;
-                    window.location.href = '/audit/replay/1/' + item.rid + '?tp_web_player=1&rid=' + item.rid;
-                });
-                historyList.appendChild(div);
-            })(items[i]);
+    // --- Back button ---
+    document.getElementById('btn-back').addEventListener('click', function () {
+        if (window.__TP_FROM_EXT) {
+            // Opened from extension sidebar: close this tab
+            window.close();
+        } else {
+            // Opened from URL/bookmark: navigate to audit page
+            chrome.storage.local.get('tp_server_url', function(data) {
+                if (data.tp_server_url) {
+                    window.location.href = data.tp_server_url.replace(/\/+$/, '') + '/audit/record';
+                } else {
+                    window.location.href = '/audit/record';
+                }
+            });
         }
-    }
+    });
+
+    // --- Shortcut overlay (? key) ---
+    var shortcutOverlay = document.getElementById('shortcut-overlay');
+    document.addEventListener('keydown', function(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === '?') {
+            shortcutOverlay.style.display = shortcutOverlay.style.display === 'none' ? '' : 'none';
+        }
+        if (e.key === 'Escape' && shortcutOverlay.style.display !== 'none') {
+            shortcutOverlay.style.display = 'none';
+        }
+    });
+    shortcutOverlay.addEventListener('click', function() {
+        shortcutOverlay.style.display = 'none';
+    });
 
     // --- Notes panel ---
     function initNotes() {
@@ -815,4 +760,67 @@
     init();
     notes.onReady(initNotes);
     initAIPanel();
+
+    // --- Expose resetPlayer for single-tab reuse ---
+    window.__TP_RESET = function(newRid) {
+        // 1. Save current notes
+        if (noteText && noteText.value) {
+            notes.setText(noteText.value);
+        }
+
+        // 2. Stop current playback
+        if (player) {
+            try { player.pause(); } catch (e) {}
+        }
+
+        // 3. Show loading overlay over the last frame (semi-transparent)
+        var loadingOverlay = document.getElementById('loading-overlay');
+        var loadingText = document.getElementById('loading-text');
+        var loadingProgress = document.getElementById('loading-progress');
+        loadingOverlay.style.display = '';
+        loadingOverlay.style.background = 'rgba(28, 28, 30, 0.85)';
+        if (loadingText) loadingText.textContent = '正在切换录像...';
+        if (loadingProgress) loadingProgress.textContent = '';
+
+        // 4. Hide error overlay if visible
+        var errOverlay = document.getElementById('error-overlay');
+        if (errOverlay) errOverlay.style.display = 'none';
+
+        // 5. Update global RID
+        window.__TP_RID = String(newRid);
+        rid = String(newRid);
+        document.title = 'RDP 录屏 #' + rid;
+
+        // 6. Reset modules
+        imageCache = TPP.createImageCache();
+        try { cacheManager = TPP.createCacheManager(rid); } catch (e) { cacheManager = null; }
+        downloader = TPP.createDownloader(serverBase, rid, cacheManager);
+        notes = TPP.createNotes(rid);
+        notes.onReady(initNotes);
+
+        // 7. Reset AI state
+        aiAnalyzer = null;
+        lastL1Result = null;
+        if (reportPanel) {
+            try { reportPanel.reset(); } catch (e) {}
+        }
+        if (timelineMarkers) {
+            try { timelineMarkers.clear(); } catch (e) {}
+        }
+        allDataReady = false;
+        downloadedFileCount = 0;
+
+        // 8. Reset player
+        player = TPP.createPlayer(renderer, imageCache, {
+            onProgress: function (cur, total) { updateProgressBar(cur, total); },
+            onEnd: function () { btnPlay.textContent = '\u25B6'; },
+            onError: function (err) { console.error('Playback error:', err); },
+        });
+
+        // 9. Reset zoom to fit
+        zoom.resetFit();
+
+        // 10. Restart download
+        init();
+    };
 })();

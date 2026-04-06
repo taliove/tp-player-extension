@@ -219,6 +219,11 @@ body {
     transform: translateY(-1px);
 }
 
+.sp-card.sp-card-playing {
+    border-left: 3px solid var(--accent);
+    padding-left: 7px;
+}
+
 .sp-card-left {
     display: flex;
     align-items: center;

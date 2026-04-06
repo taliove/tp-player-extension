@@ -9,34 +9,21 @@
 </head>
 <body>
 <div id="player-app">
-  <!-- Menu Bar -->
-  <div id="menu-bar">
-    <span id="menu-title">&#9654; RDP 录屏回放</span>
-    <div id="menu-items">
-      <div class="menu-item" id="menu-file">
-        <span class="menu-label">文件</span>
-        <div class="menu-dropdown" id="dropdown-file">
-          <div class="menu-option" id="menu-back-list">返回列表</div>
-          <div class="menu-divider"></div>
-          <div class="menu-option" id="menu-clear-cache-current">清除当前缓存</div>
-          <div class="menu-option" id="menu-clear-cache-all">清除所有缓存</div>
-        </div>
-      </div>
-      <div class="menu-item" id="menu-history">
-        <span class="menu-label">历史</span>
-        <div class="menu-dropdown menu-dropdown-wide" id="dropdown-history">
-          <div id="history-list"></div>
-          <div id="history-empty" class="menu-empty">暂无播放历史</div>
-        </div>
-      </div>
-      <div class="menu-item" id="menu-help">
-        <span class="menu-label">帮助</span>
-        <div class="menu-dropdown" id="dropdown-help">
-          <div class="menu-option" id="menu-show-shortcuts">快捷键说明 &#10004;</div>
-        </div>
-      </div>
+  <!-- Info Bar (replaces menu bar — shows recording meta + back button) -->
+  <div id="info-bar">
+    <button id="btn-back" class="info-bar-back" title="返回列表">&larr;</button>
+    <span id="info-bar-meta"></span>
+  </div>
+  <!-- Shortcut overlay (toggled by ? key) -->
+  <div id="shortcut-overlay" style="display:none">
+    <div class="shortcut-overlay-content">
+      <div class="shortcut-overlay-title">快捷键</div>
+      <div class="shortcut-row"><kbd>Space</kbd><span>暂停 / 播放</span></div>
+      <div class="shortcut-row"><kbd>&larr; &rarr;</kbd><span>快退 / 快进 10s</span></div>
+      <div class="shortcut-row"><kbd>+ / -</kbd><span>变速</span></div>
+      <div class="shortcut-row"><kbd>F</kbd><span>全屏</span></div>
+      <div class="shortcut-row"><kbd>?</kbd><span>关闭此面板</span></div>
     </div>
-    <div id="menu-meta"></div>
   </div>
   <!-- Main content: Canvas + Sidebar -->
   <div id="main-content">

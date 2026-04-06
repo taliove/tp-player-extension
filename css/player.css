@@ -594,9 +594,9 @@ body > :not(#player-app):not(script) {
     color: rgba(255, 255, 255, 0.15);
 }
 
-/* === Menu Bar === */
-#menu-bar {
-    height: 36px;
+/* === Info Bar (replaces menu bar) === */
+#info-bar {
+    height: 32px;
     background: var(--bg-elevated);
     backdrop-filter: saturate(180%) blur(20px);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
@@ -606,134 +606,80 @@ body > :not(#player-app):not(script) {
     border-bottom: 0.5px solid var(--separator);
     flex-shrink: 0;
     z-index: 50;
-    gap: 2px;
+    gap: 8px;
 }
 
-#menu-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-right: 16px;
-    white-space: nowrap;
+.info-bar-back {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
 }
 
-#menu-items {
-    display: flex;
-    gap: 0;
+.info-bar-back:hover {
+    opacity: 0.7;
 }
 
-.menu-item {
-    position: relative;
-}
-
-.menu-label {
+#info-bar-meta {
     font-size: 12px;
     color: var(--text-secondary);
-    padding: 4px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background var(--transition);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.menu-label:hover,
-.menu-item.open .menu-label {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-primary);
-}
-
-/* Dropdown */
-.menu-dropdown {
-    display: none;
-    position: absolute;
-    top: 100%;
+/* === Shortcut Overlay === */
+#shortcut-overlay {
+    position: fixed;
+    top: 0;
     left: 0;
-    margin-top: 4px;
-    background: var(--bg-secondary);
-    border: 0.5px solid var(--separator);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-md);
-    min-width: 160px;
-    padding: 4px 0;
-    z-index: 100;
-}
-
-.menu-dropdown-wide {
-    min-width: 280px;
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-.menu-item.open .menu-dropdown {
-    display: block;
-}
-
-.menu-option {
-    padding: 6px 12px;
-    font-size: 12px;
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: background var(--transition);
-}
-
-.menu-option:hover {
-    background: var(--accent);
-    color: #fff;
-}
-
-.menu-divider {
-    height: 0.5px;
-    background: var(--separator);
-    margin: 4px 0;
-}
-
-.menu-empty {
-    padding: 12px;
-    font-size: 12px;
-    color: var(--text-tertiary);
-    text-align: center;
-}
-
-/* History item */
-.history-item {
-    padding: 8px 12px;
-    font-size: 12px;
-    cursor: pointer;
-    transition: background var(--transition);
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 200;
     display: flex;
     align-items: center;
-    gap: 10px;
+    justify-content: center;
 }
 
-.history-item:hover {
-    background: rgba(255, 255, 255, 0.06);
+.shortcut-overlay-content {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: 24px 32px;
+    min-width: 260px;
+    box-shadow: var(--shadow-md);
 }
 
-.history-item.current {
-    background: rgba(10, 132, 255, 0.12);
-}
-
-.history-item-user {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.shortcut-overlay-title {
+    font-size: 14px;
+    font-weight: 600;
     color: var(--text-primary);
+    margin-bottom: 16px;
 }
 
-.history-item-meta {
-    font-size: 11px;
-    color: var(--text-tertiary);
-    white-space: nowrap;
+.shortcut-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    font-size: 13px;
+    color: var(--text-secondary);
 }
 
-#menu-meta {
-    margin-left: auto;
-    font-size: 11px;
-    color: var(--text-tertiary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+.shortcut-row kbd {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    min-width: 28px;
+    text-align: center;
+    margin-right: 16px;
 }
 
 /* === Main Content (Canvas + Sidebar) === */
