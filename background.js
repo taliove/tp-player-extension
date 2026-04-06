@@ -6,6 +6,35 @@ importScripts('js/auth-manager.js', 'js/api-proxy.js');
 var authManager = TP.createAuthManager();
 var apiProxy = TP.createAPIProxy(authManager);
 
+// --- Port-based sidebar detection ---
+var sidebarPort = null;
+var playerPorts = [];
+
+chrome.runtime.onConnect.addListener(function(port) {
+    if (port.name === 'sidebar') {
+        sidebarPort = port;
+        // Notify all player tabs that sidebar is open
+        for (var i = 0; i < playerPorts.length; i++) {
+            try { playerPorts[i].postMessage({ type: 'sidebar-state', open: true }); } catch(e) {}
+        }
+        port.onDisconnect.addListener(function() {
+            sidebarPort = null;
+            // Notify all player tabs that sidebar is closed
+            for (var j = 0; j < playerPorts.length; j++) {
+                try { playerPorts[j].postMessage({ type: 'sidebar-state', open: false }); } catch(e) {}
+            }
+        });
+    }
+    if (port.name.indexOf('player-') === 0) {
+        playerPorts.push(port);
+        // Send current sidebar state immediately
+        port.postMessage({ type: 'sidebar-state', open: sidebarPort !== null });
+        port.onDisconnect.addListener(function() {
+            playerPorts = playerPorts.filter(function(p) { return p !== port; });
+        });
+    }
+});
+
 // --- Top-level init (runs on every service worker wake) ---
 (function() {
     chrome.storage.local.get('tp_auth_state', function(data) {
