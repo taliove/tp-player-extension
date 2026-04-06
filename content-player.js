@@ -53,6 +53,7 @@
         // -- Head --
         appendMeta('charset', 'UTF-8');
         appendMeta('name', 'viewport', 'width=device-width, initial-scale=1.0');
+        appendLink(extBase + 'css/tokens.css');
         appendLink(extBase + 'css/player.css');
         document.title = 'RDP 录屏回放';
 
@@ -114,34 +115,21 @@
     function getPlayerHTML() {
         return ''
             + '<div id="player-app">'
-            // --- Menu Bar ---
-            + '  <div id="menu-bar">'
-            + '    <span id="menu-title">\u25B6 RDP \u5f55\u5c4f\u56de\u653e</span>'
-            + '    <div id="menu-items">'
-            + '      <div class="menu-item" id="menu-file">'
-            + '        <span class="menu-label">\u6587\u4ef6</span>'
-            + '        <div class="menu-dropdown" id="dropdown-file">'
-            + '          <div class="menu-option" id="menu-back-list">\u8fd4\u56de\u5217\u8868</div>'
-            + '          <div class="menu-divider"></div>'
-            + '          <div class="menu-option" id="menu-clear-cache-current">\u6e05\u9664\u5f53\u524d\u7f13\u5b58</div>'
-            + '          <div class="menu-option" id="menu-clear-cache-all">\u6e05\u9664\u6240\u6709\u7f13\u5b58</div>'
-            + '        </div>'
-            + '      </div>'
-            + '      <div class="menu-item" id="menu-history">'
-            + '        <span class="menu-label">\u5386\u53f2</span>'
-            + '        <div class="menu-dropdown menu-dropdown-wide" id="dropdown-history">'
-            + '          <div id="history-list"></div>'
-            + '          <div id="history-empty" class="menu-empty">\u6682\u65e0\u64ad\u653e\u5386\u53f2</div>'
-            + '        </div>'
-            + '      </div>'
-            + '      <div class="menu-item" id="menu-help">'
-            + '        <span class="menu-label">\u5e2e\u52a9</span>'
-            + '        <div class="menu-dropdown" id="dropdown-help">'
-            + '          <div class="menu-option" id="menu-show-shortcuts">\u5feb\u6377\u952e\u8bf4\u660e \u2714</div>'
-            + '        </div>'
-            + '      </div>'
+            // --- Info Bar (replaces menu bar) ---
+            + '  <div id="info-bar">'
+            + '    <button id="btn-back" class="info-bar-back" title="\u8fd4\u56de\u5217\u8868">&larr;</button>'
+            + '    <span id="info-bar-meta"></span>'
+            + '  </div>'
+            // --- Shortcut overlay ---
+            + '  <div id="shortcut-overlay" style="display:none">'
+            + '    <div class="shortcut-overlay-content">'
+            + '      <div class="shortcut-overlay-title">\u5feb\u6377\u952e</div>'
+            + '      <div class="shortcut-row"><kbd>Space</kbd><span>\u6682\u505c / \u64ad\u653e</span></div>'
+            + '      <div class="shortcut-row"><kbd>&larr; &rarr;</kbd><span>\u5feb\u9000 / \u5feb\u8fdb 10s</span></div>'
+            + '      <div class="shortcut-row"><kbd>+ / -</kbd><span>\u53d8\u901f</span></div>'
+            + '      <div class="shortcut-row"><kbd>F</kbd><span>\u5168\u5c4f</span></div>'
+            + '      <div class="shortcut-row"><kbd>?</kbd><span>\u5173\u95ed\u6b64\u9762\u677f</span></div>'
             + '    </div>'
-            + '    <div id="menu-meta"></div>'
             + '  </div>'
             // --- Main content: Canvas + Sidebar ---
             + '  <div id="main-content">'
@@ -359,7 +347,7 @@
                 });
             } else if (msg.action === 'storage-set') {
                 // Only allow known storage keys
-                var allowedKeys = ['tp_ai_settings', 'tp_report_cache'];
+                var allowedKeys = ['tp_ai_settings', 'tp_report_cache', 'tp_player_notes', 'tp_play_history'];
                 var keys = Object.keys(payload.data || {});
                 for (var ak = 0; ak < keys.length; ak++) {
                     if (allowedKeys.indexOf(keys[ak]) < 0) {
