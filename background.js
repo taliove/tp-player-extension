@@ -162,6 +162,49 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
         return true;
     }
 
+    // --- Settings: update server/credentials with rollback on failure ---
+    if (message.type === 'update-settings') {
+        var newUrl = message.url;
+        var newUsername = message.username;
+        var newPassword = message.password; // null = keep existing
+
+        // Save current credentials for rollback
+        var prevUrl, prevUsername, prevPassword;
+        authManager.loadCredentials().then(function(creds) {
+            prevUrl = creds ? creds.url : null;
+            prevUsername = creds ? creds.username : null;
+            prevPassword = creds ? creds.password : null;
+
+            var passwordToUse = newPassword || prevPassword;
+            if (!passwordToUse) throw new Error('无密码可用');
+
+            // Attempt login with new credentials
+            return authManager.doLogin(newUrl, newUsername, passwordToUse, '').then(function() {
+                return authManager.saveCredentials(newUrl, newUsername, passwordToUse, true);
+            }).then(function() {
+                chrome.storage.local.set({
+                    tp_auth_state: 'authenticated',
+                    tp_last_login: Date.now(),
+                    tp_server_url: newUrl,
+                    tp_username: newUsername
+                });
+                sendResponse({ success: true });
+            });
+        }).catch(function(err) {
+            // Rollback: restore previous credentials if they existed
+            if (prevUrl && prevUsername && prevPassword) {
+                authManager.saveCredentials(prevUrl, prevUsername, prevPassword, true).then(function() {
+                    chrome.storage.local.set({
+                        tp_server_url: prevUrl,
+                        tp_username: prevUsername
+                    });
+                });
+            }
+            sendResponse({ success: false, error: '认证失败，已恢复原配置' });
+        });
+        return true;
+    }
+
     // --- Captcha: fetch captcha image ---
     if (message.type === 'fetch-captcha') {
         fetch(message.url, { credentials: 'include' }).then(function(resp) {
