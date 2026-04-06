@@ -1,10 +1,35 @@
-// Teleport Web Player — Background Service Worker
-// VL API proxy: relays requests from content script to external VL APIs
-// Supports both Anthropic Claude API and OpenAI-compatible API
+// Teleport Assessment Reviewer — Background Service Worker
+// Auth management, API proxy, auto-re-login alarms, VL API proxy.
 
-// Self-test on install: verify fetch works from service worker context
+importScripts('js/auth-manager.js', 'js/api-proxy.js');
+
+var authManager = TP.createAuthManager();
+var apiProxy = TP.createAPIProxy(authManager);
+
+// --- Top-level init (runs on every service worker wake) ---
+(function() {
+    chrome.storage.local.get('tp_auth_state', function(data) {
+        if (data.tp_auth_state === 'authenticated') {
+            chrome.action.setPopup({ popup: '' });
+            chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(function() {});
+            // Ensure alarms exist
+            chrome.alarms.get('tp-relogin', function(alarm) {
+                if (!alarm) chrome.alarms.create('tp-relogin', { periodInMinutes: 50 });
+            });
+            chrome.alarms.get('tp-refresh-records', function(alarm) {
+                if (!alarm) chrome.alarms.create('tp-refresh-records', { periodInMinutes: 1 });
+            });
+        } else {
+            chrome.action.setPopup({ popup: 'popup.html' });
+            chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(function() {});
+        }
+    });
+})();
+
+// --- Install handler ---
 chrome.runtime.onInstalled.addListener(function() {
-    console.log('[BG] Service worker installed, running fetch self-test...');
+    console.log('[BG] Service worker installed');
+    // Self-test
     fetch('https://httpbin.org/post', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -16,7 +41,163 @@ chrome.runtime.onInstalled.addListener(function() {
     });
 });
 
-// Debug: run testAPI('endpoint', 'key', 'model') in service worker console
+// --- Alarm handler ---
+chrome.alarms.onAlarm.addListener(function(alarm) {
+    if (alarm.name === 'tp-relogin') {
+        // Auto re-login: try type 1 (no captcha) first, then type 2 without captcha
+        // If server requires captcha, auto-re-login will fail silently
+        // and the next API call will trigger manual re-login
+        authManager.loadCredentials().then(function(creds) {
+            if (!creds) return;
+            return authManager.doLogin(creds.url, creds.username, creds.password, '');
+        }).then(function() {
+            chrome.storage.local.set({ tp_last_login: Date.now() });
+            console.log('[BG] Auto re-login OK');
+        }).catch(function(err) {
+            console.warn('[BG] Auto re-login failed:', err.message, '(will retry on next API call)');
+        });
+    }
+    if (alarm.name === 'tp-refresh-records') {
+        chrome.runtime.sendMessage({ type: 'records-refresh-tick' }).catch(function() {});
+    }
+});
+
+// --- Message handler ---
+chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+    if (!message || !message.type) return false;
+
+    // --- Auth: login ---
+    if (message.type === 'login') {
+        var url = message.url;
+        var username = message.username;
+        var password = message.password;
+        var captcha = message.captcha || '';
+        var remember = message.remember !== false;
+
+        authManager.doLogin(url, username, password, captcha).then(function() {
+            return authManager.saveCredentials(url, username, password, remember);
+        }).then(function() {
+            chrome.storage.local.set({
+                tp_auth_state: 'authenticated',
+                tp_last_login: Date.now(),
+                tp_server_url: url,
+                tp_username: username
+            });
+            chrome.action.setPopup({ popup: '' });
+            chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(function() {});
+            chrome.alarms.create('tp-relogin', { periodInMinutes: 50 });
+            chrome.alarms.create('tp-refresh-records', { periodInMinutes: 1 });
+            sendResponse({ success: true });
+        }).catch(function(err) {
+            sendResponse({ success: false, error: err.message });
+        });
+        return true;
+    }
+
+    // --- Auth: logout ---
+    if (message.type === 'logout') {
+        authManager.clearCredentials().then(function() {
+            chrome.storage.local.set({ tp_auth_state: 'unauthenticated' });
+            chrome.action.setPopup({ popup: 'popup.html' });
+            chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(function() {});
+            chrome.alarms.clear('tp-relogin');
+            chrome.alarms.clear('tp-refresh-records');
+            sendResponse({ success: true });
+        });
+        return true;
+    }
+
+    // --- Auth: re-login (from player tab on 401) ---
+    if (message.type === 're-login') {
+        authManager.loadCredentials().then(function(creds) {
+            if (!creds) throw new Error('No saved credentials');
+            // Try without captcha first (type 1)
+            return authManager.doLogin(creds.url, creds.username, creds.password, '');
+        }).then(function() {
+            chrome.storage.local.set({ tp_last_login: Date.now() });
+            sendResponse({ success: true });
+        }).catch(function(err) {
+            sendResponse({ success: false, error: err.message });
+        });
+        return true;
+    }
+
+    // --- Auth: get state ---
+    if (message.type === 'get-auth-state') {
+        chrome.storage.local.get(['tp_auth_state', 'tp_server_url', 'tp_username'], function(data) {
+            sendResponse(data);
+        });
+        return true;
+    }
+
+    // --- API: get records ---
+    if (message.type === 'get-records') {
+        apiProxy.getRecords(message.page || 0, message.perPage || 100).then(function(data) {
+            sendResponse({ success: true, data: data });
+        }).catch(function(err) {
+            sendResponse({ success: false, error: err.message });
+        });
+        return true;
+    }
+
+    // --- API: get hosts ---
+    if (message.type === 'get-hosts') {
+        apiProxy.getHosts().then(function(data) {
+            sendResponse({ success: true, data: data });
+        }).catch(function(err) {
+            sendResponse({ success: false, error: err.message });
+        });
+        return true;
+    }
+
+    // --- Side panel: open ---
+    if (message.type === 'open-side-panel') {
+        chrome.windows.getCurrent(function(win) {
+            chrome.sidePanel.open({ windowId: win.id }).then(function() {
+                sendResponse({ success: true });
+            }).catch(function(err) {
+                sendResponse({ success: false, error: err.message });
+            });
+        });
+        return true;
+    }
+
+    // --- Captcha: fetch captcha image ---
+    if (message.type === 'fetch-captcha') {
+        fetch(message.url, { credentials: 'include' }).then(function(resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.blob();
+        }).then(function(blob) {
+            var reader = new FileReader();
+            reader.onloadend = function() {
+                sendResponse({ success: true, dataUrl: reader.result });
+            };
+            reader.readAsDataURL(blob);
+        }).catch(function(err) {
+            sendResponse({ success: false, error: err.message });
+        });
+        return true;
+    }
+
+    // --- VL API proxy (existing, for AI analysis) ---
+    if (message.type === 'vl-analyze') {
+        console.log('[BG] Received vl-analyze, protocol:', message.payload.config.protocol,
+            'endpoint:', message.payload.config.endpoint,
+            'images:', message.payload.images.length);
+        handleAnalyze(message.payload).then(function(result) {
+            console.log('[BG] Success, response length:', result.text.length);
+            sendResponse({ success: true, data: result });
+        }).catch(function(err) {
+            console.error('[BG] Error:', err.message);
+            sendResponse({ success: false, error: err.message });
+        });
+        return true;
+    }
+
+    return false;
+});
+
+// --- Debug helper ---
 self.testAPI = function(endpoint, key, model) {
     console.log('[BG] Testing:', endpoint, model);
     callClaude(
@@ -26,20 +207,9 @@ self.testAPI = function(endpoint, key, model) {
      .catch(function(e) { console.error('[BG] FAIL:', e.message); });
 };
 
-chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-    if (message.type !== 'vl-analyze') return false;
-    console.log('[BG] Received vl-analyze, protocol:', message.payload.config.protocol,
-        'endpoint:', message.payload.config.endpoint,
-        'images:', message.payload.images.length);
-    handleAnalyze(message.payload).then(function(result) {
-        console.log('[BG] Success, response length:', result.text.length);
-        sendResponse({ success: true, data: result });
-    }).catch(function(err) {
-        console.error('[BG] Error:', err.message);
-        sendResponse({ success: false, error: err.message });
-    });
-    return true; // keep message channel open for async response
-});
+// ============================================================
+// VL API proxy functions (preserved from v1)
+// ============================================================
 
 function handleAnalyze(payload) {
     var config = payload.config;
@@ -149,6 +319,9 @@ function callOpenAI(config, images, prompt, systemPrompt, timeoutMs) {
     }
 
     return fetchWithTimeout(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + config.apiKey
         },
         body: JSON.stringify(body)

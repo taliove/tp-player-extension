@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=360">
+    <title>Teleport Assessment Reviewer</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <!-- Login form (shown when unauthenticated) -->
+    <div id="view-login">
+        <div class="popup-header">
+            <img src="icons/icon128.png" class="popup-logo" alt="">
+            <div class="popup-title">Teleport 机试审阅</div>
+            <div class="popup-version">v2.0</div>
+        </div>
+
+        <div class="popup-form">
+            <label class="popup-label">服务器地址</label>
+            <input type="url" id="input-url" class="popup-input" placeholder="https://teleport.company.com" autocomplete="url">
+
+            <label class="popup-label">用户名</label>
+            <input type="text" id="input-username" class="popup-input" placeholder="请输入用户名" autocomplete="username">
+
+            <label class="popup-label">密码</label>
+            <input type="password" id="input-password" class="popup-input" placeholder="请输入密码" autocomplete="current-password">
+
+            <label class="popup-label">验证码</label>
+            <div class="popup-captcha-row">
+                <input type="text" id="input-captcha" class="popup-input popup-captcha-input" placeholder="请输入验证码" autocomplete="off">
+                <img id="captcha-img" class="popup-captcha-img" alt="验证码" title="点击刷新">
+            </div>
+
+            <label class="popup-checkbox">
+                <input type="checkbox" id="input-remember" checked>
+                <span>记住密码</span>
+            </label>
+
+            <button id="btn-login" class="popup-btn-primary">连接</button>
+
+            <div id="login-error" class="popup-error" style="display:none"></div>
+        </div>
+
+        <div class="popup-footer">
+            首次使用？联系管理员获取服务器地址和账号。
+        </div>
+    </div>
+
+    <!-- Status view (shown when authenticated) -->
+    <div id="view-status" style="display:none">
+        <div class="popup-header">
+            <img src="icons/icon128.png" class="popup-logo" alt="">
+            <div class="popup-title">Teleport 机试审阅</div>
+            <div class="popup-status-dot"></div>
+        </div>
+
+        <div class="popup-status-info">
+            <div class="popup-status-row">
+                <span class="popup-status-label">服务器</span>
+                <span id="status-url" class="popup-status-value"></span>
+            </div>
+            <div class="popup-status-row">
+                <span class="popup-status-label">用户</span>
+                <span id="status-username" class="popup-status-value"></span>
+            </div>
+        </div>
+
+        <div class="popup-actions">
+            <button id="btn-open-panel" class="popup-btn-primary">打开侧边栏</button>
+            <button id="btn-logout" class="popup-btn-secondary">退出登录</button>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

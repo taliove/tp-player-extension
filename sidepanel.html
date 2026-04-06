@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=400">
+    <title>Teleport Assessment Reviewer</title>
+    <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+    <!-- Header -->
+    <div class="sp-header">
+        <div class="sp-header-left">
+            <span id="sp-status-dot" class="sp-status-dot"></span>
+            <span class="sp-header-title">Teleport</span>
+        </div>
+        <div class="sp-header-right">
+            <button id="btn-search-toggle" class="sp-icon-btn" title="搜索">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+            <button id="btn-refresh" class="sp-icon-btn" title="刷新">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M13 8a5 5 0 11-1.5-3.5M13 2v3h-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Search bar (hidden by default) -->
+    <div id="sp-search-bar" class="sp-search-bar" style="display:none">
+        <input id="sp-search-input" class="sp-search-input" type="text" placeholder="搜索候选人、岗位...">
+    </div>
+
+    <!-- Filter tabs -->
+    <div class="sp-filter-tabs">
+        <button class="sp-tab active" data-filter="all">全部</button>
+        <button class="sp-tab" data-filter="today">今日</button>
+        <button class="sp-tab" data-filter="pending">待审</button>
+        <button class="sp-tab" data-filter="tagged">已标记</button>
+    </div>
+
+    <!-- Card list -->
+    <div id="sp-card-list" class="sp-card-list">
+        <!-- Cards rendered dynamically -->
+    </div>
+
+    <!-- States -->
+    <div id="sp-loading" class="sp-state" style="display:none">
+        <div class="sp-spinner"></div>
+        <div class="sp-state-text">加载中...</div>
+    </div>
+
+    <div id="sp-empty" class="sp-state" style="display:none">
+        <div class="sp-state-text">暂无会话记录</div>
+        <button id="btn-empty-refresh" class="sp-state-btn">刷新</button>
+    </div>
+
+    <div id="sp-error" class="sp-state" style="display:none">
+        <div id="sp-error-text" class="sp-state-text sp-error-text"></div>
+        <button id="btn-error-retry" class="sp-state-btn">重试</button>
+    </div>
+
+    <div id="sp-unauth" class="sp-state" style="display:none">
+        <div class="sp-state-text">请先登录</div>
+        <button id="btn-go-login" class="sp-state-btn">登录</button>
+    </div>
+
+    <!-- Footer -->
+    <div id="sp-footer" class="sp-footer" style="display:none">
+        <span id="sp-stat-today"></span>
+        <span id="sp-stat-pending"></span>
+    </div>
+
+    <!-- Card context menu -->
+    <div id="sp-context-menu" class="sp-context-menu" style="display:none">
+        <button class="sp-menu-item" data-tag="pass">标记通过</button>
+        <button class="sp-menu-item" data-tag="fail">标记不通过</button>
+        <button class="sp-menu-item" data-tag="pending">标记待定</button>
+        <div class="sp-menu-divider"></div>
+        <button class="sp-menu-item" data-action="note">添加备注</button>
+    </div>
+
+    <script src="js/constants.js"></script>
+    <script src="js/shared-utils.js"></script>
+    <script src="sidepanel.js"></script>
+</body>
+</html>

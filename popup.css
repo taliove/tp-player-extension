@@ -1,0 +1,224 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    width: 340px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    color: #e0e0e0;
+    background: #1c1c1e;
+}
+
+.popup-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid #2c2c2e;
+}
+
+.popup-logo {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+}
+
+.popup-title {
+    font-size: 14px;
+    font-weight: 600;
+    flex: 1;
+}
+
+.popup-version {
+    font-size: 11px;
+    color: #8e8e93;
+}
+
+.popup-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #30d158;
+}
+
+.popup-form {
+    padding: 12px 16px;
+}
+
+.popup-label {
+    display: block;
+    font-size: 11px;
+    color: #8e8e93;
+    margin-bottom: 4px;
+    margin-top: 10px;
+}
+
+.popup-label:first-child {
+    margin-top: 0;
+}
+
+.popup-input {
+    display: block;
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 13px;
+    color: #e0e0e0;
+    background: #2c2c2e;
+    border: 1px solid #3a3a3c;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.popup-input:focus {
+    border-color: #0a84ff;
+}
+
+.popup-input::placeholder {
+    color: #636366;
+}
+
+.popup-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #8e8e93;
+}
+
+.popup-checkbox input[type="checkbox"] {
+    accent-color: #0a84ff;
+}
+
+.popup-btn-primary {
+    display: block;
+    width: 100%;
+    padding: 9px 0;
+    margin-top: 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: #0a84ff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.popup-btn-primary:hover {
+    opacity: 0.9;
+}
+
+.popup-btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.popup-btn-primary.loading {
+    position: relative;
+    color: transparent;
+}
+
+.popup-btn-primary.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.popup-btn-secondary {
+    display: block;
+    width: 100%;
+    padding: 8px 0;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #ff453a;
+    background: transparent;
+    border: 1px solid #3a3a3c;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.popup-btn-secondary:hover {
+    background: #2c2c2e;
+}
+
+.popup-error {
+    margin-top: 10px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: #ff453a;
+    background: rgba(255,69,58,0.1);
+    border-radius: 6px;
+}
+
+.popup-captcha-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.popup-captcha-input {
+    flex: 1;
+}
+
+.popup-captcha-img {
+    height: 36px;
+    border-radius: 4px;
+    cursor: pointer;
+    background: #3a3a3c;
+    min-width: 90px;
+}
+
+.popup-footer {
+    padding: 10px 16px 14px;
+    font-size: 11px;
+    color: #636366;
+    text-align: center;
+    border-top: 1px solid #2c2c2e;
+}
+
+.popup-status-info {
+    padding: 12px 16px;
+}
+
+.popup-status-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+}
+
+.popup-status-label {
+    color: #8e8e93;
+    font-size: 12px;
+}
+
+.popup-status-value {
+    color: #e0e0e0;
+    font-size: 12px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.popup-actions {
+    padding: 0 16px 14px;
+}

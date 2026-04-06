@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RDP 录屏回放</title>
+    <link rel="stylesheet" href="css/player.css">
+</head>
+<body>
+<div id="player-app">
+  <!-- Menu Bar -->
+  <div id="menu-bar">
+    <span id="menu-title">&#9654; RDP 录屏回放</span>
+    <div id="menu-items">
+      <div class="menu-item" id="menu-file">
+        <span class="menu-label">文件</span>
+        <div class="menu-dropdown" id="dropdown-file">
+          <div class="menu-option" id="menu-back-list">返回列表</div>
+          <div class="menu-divider"></div>
+          <div class="menu-option" id="menu-clear-cache-current">清除当前缓存</div>
+          <div class="menu-option" id="menu-clear-cache-all">清除所有缓存</div>
+        </div>
+      </div>
+      <div class="menu-item" id="menu-history">
+        <span class="menu-label">历史</span>
+        <div class="menu-dropdown menu-dropdown-wide" id="dropdown-history">
+          <div id="history-list"></div>
+          <div id="history-empty" class="menu-empty">暂无播放历史</div>
+        </div>
+      </div>
+      <div class="menu-item" id="menu-help">
+        <span class="menu-label">帮助</span>
+        <div class="menu-dropdown" id="dropdown-help">
+          <div class="menu-option" id="menu-show-shortcuts">快捷键说明 &#10004;</div>
+        </div>
+      </div>
+    </div>
+    <div id="menu-meta"></div>
+  </div>
+  <!-- Main content: Canvas + Sidebar -->
+  <div id="main-content">
+    <!-- Canvas area -->
+    <div id="canvas-container">
+      <div id="canvas-wrapper">
+        <canvas id="player-canvas"></canvas>
+      </div>
+      <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div id="loading-text">正在加载...</div>
+        <div id="loading-progress"></div>
+      </div>
+      <div id="error-overlay" style="display:none">
+        <div id="error-icon">&#9888;</div>
+        <div id="error-text"></div>
+        <button id="error-retry">重试</button>
+      </div>
+      <div id="action-overlay"></div>
+      <div id="shortcut-hint" class="hidden">
+        <kbd>Space</kbd> 暂停/播放
+        <span class="hint-sep">|</span>
+        <kbd>&#8592; &#8594;</kbd> 快退/快进 10s
+        <span class="hint-sep">|</span>
+        <kbd>+/-</kbd> 变速
+      </div>
+    </div>
+    <button id="btn-sidebar-expand" title="展开侧栏">&#10094;</button>
+    <!-- Sidebar -->
+    <div id="sidebar-resize-handle"></div>
+    <div id="sidebar">
+      <div id="sidebar-header">
+        <div id="sidebar-tabs">
+          <button class="sidebar-tab active" data-tab="notes">笔记</button>
+          <button class="sidebar-tab" data-tab="info">信息</button>
+          <button class="sidebar-tab" data-tab="ai-report">AI 报告</button>
+        </div>
+        <button id="btn-sidebar-toggle" class="sidebar-toggle-btn" title="收起侧栏">&#10095;</button>
+      </div>
+      <div id="sidebar-panels">
+        <div id="panel-notes" class="sidebar-panel active">
+          <div id="note-tags">
+            <span class="note-tag tag-pass" data-tag="pass">通过</span>
+            <span class="note-tag tag-fail" data-tag="fail">淘汰</span>
+            <span class="note-tag tag-pending" data-tag="pending">待定</span>
+          </div>
+          <textarea id="note-text" placeholder="输入评估笔记..."></textarea>
+        </div>
+        <div id="panel-info" class="sidebar-panel">
+          <div id="info-list">
+            <span class="info-label">加载中...</span>
+          </div>
+        </div>
+        <div id="panel-ai-report" class="sidebar-panel">
+          <div id="ai-report-content">
+            <div id="ai-report-idle">
+              <div class="ai-idle-header">AI 智能评估</div>
+              <div class="ai-idle-steps">
+                <div class="ai-idle-step">
+                  <span class="ai-idle-step-num">1</span>
+                  <div class="ai-idle-step-text"><strong>全局扫描</strong><span>均匀采帧，识别题目与阶段</span></div>
+                </div>
+                <div class="ai-idle-step">
+                  <span class="ai-idle-step-num">2</span>
+                  <div class="ai-idle-step-text"><strong>逐段分析</strong><span>每阶段密采，评估各维度</span></div>
+                </div>
+                <div class="ai-idle-step">
+                  <span class="ai-idle-step-num">3</span>
+                  <div class="ai-idle-step-text"><strong>深度检查</strong><span>对可疑区域进行深入核实</span></div>
+                </div>
+              </div>
+              <button id="btn-ai-analyze" class="ai-btn-primary" disabled>数据加载中...</button>
+              <div class="ai-idle-footer">
+                <div class="ai-auto-group" id="ai-auto-group">
+                  <span>自动分析</span>
+                  <div class="toggle" id="chk-ai-auto"><div class="toggle-knob"></div></div>
+                </div>
+                <button id="btn-ai-settings" class="ai-btn-icon-sm" title="设置">&#9881;</button>
+              </div>
+            </div>
+            <div id="ai-report-progress" style="display:none">
+              <div class="ai-progress-ring-container">
+                <svg class="ai-progress-ring" viewBox="0 0 80 80">
+                  <circle class="ai-progress-track" cx="40" cy="40" r="34" />
+                  <circle class="ai-progress-fill" cx="40" cy="40" r="34" id="ai-progress-circle" />
+                </svg>
+                <span class="ai-progress-pct" id="ai-progress-pct">0%</span>
+              </div>
+              <div class="ai-progress-pipeline">
+                <div class="ai-pipeline-step" data-step="l1"><span class="ai-pipeline-dot"></span><span class="ai-pipeline-label">L1 扫描</span></div>
+                <div class="ai-pipeline-connector"></div>
+                <div class="ai-pipeline-step" data-step="l2"><span class="ai-pipeline-dot"></span><span class="ai-pipeline-label">L2 分析</span></div>
+                <div class="ai-pipeline-connector"></div>
+                <div class="ai-pipeline-step" data-step="l3"><span class="ai-pipeline-dot"></span><span class="ai-pipeline-label">L3 深查</span></div>
+              </div>
+              <div id="ai-progress-text">准备中...</div>
+              <button id="btn-ai-cancel" class="ai-btn-text-cancel">取消分析</button>
+            </div>
+            <div id="ai-report-result" style="display:none"></div>
+            <div id="ai-settings-panel" style="display:none">
+              <div class="ai-report-section-title">API 配置</div>
+              <div class="ai-settings-form">
+                <label class="ai-settings-label">协议</label>
+                <div class="ai-settings-radio">
+                  <label><input type="radio" name="ai-protocol" value="claude" checked> Claude API</label>
+                  <label><input type="radio" name="ai-protocol" value="openai"> OpenAI 兼容</label>
+                </div>
+                <label class="ai-settings-label">Endpoint</label>
+                <input type="text" id="ai-set-endpoint" class="ai-settings-input" placeholder="https://api.anthropic.com">
+                <label class="ai-settings-label">API Key</label>
+                <div class="ai-settings-key-row">
+                  <input type="password" id="ai-set-apikey" class="ai-settings-input" placeholder="sk-...">
+                  <button id="btn-ai-toggle-key" class="ai-btn-icon">&#128065;</button>
+                </div>
+                <label class="ai-settings-label">Model</label>
+                <input type="text" id="ai-set-model" class="ai-settings-input" placeholder="claude-sonnet-4-6">
+                <label class="ai-settings-label">API 超时 (秒)</label>
+                <input type="number" id="ai-set-timeout" class="ai-settings-input" min="30" max="300" value="60">
+              </div>
+              <div class="ai-settings-actions">
+                <button id="btn-ai-import" class="ai-btn-secondary">从文件导入</button>
+                <button id="btn-ai-test" class="ai-btn-secondary">测试连接</button>
+                <input type="file" id="ai-import-file" accept=".json" style="display:none">
+              </div>
+              <div class="ai-settings-actions" style="margin-top:8px">
+                <button id="btn-ai-save-settings" class="ai-btn-primary">保存</button>
+                <button id="btn-ai-cancel-settings" class="ai-btn-secondary">返回</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Control bar -->
+  <div id="control-bar">
+    <div id="controls-row-1">
+      <button id="btn-play" title="播放/暂停 (Space)">&#9654;</button>
+      <div id="progress-container">
+        <div id="ai-marker-track"></div>
+        <div id="progress-bar">
+          <div id="progress-played"></div>
+          <div id="progress-handle"></div>
+        </div>
+      </div>
+      <span id="time-display">00:00 / 00:00</span>
+    </div>
+    <div id="controls-row-2">
+      <div id="speed-group" class="segmented-control">
+        <button class="seg-btn active" data-speed="1">1x</button>
+        <button class="seg-btn" data-speed="2">2x</button>
+        <button class="seg-btn" data-speed="4">4x</button>
+        <button class="seg-btn" data-speed="8">8x</button>
+        <button class="seg-btn" data-speed="16">16x</button>
+      </div>
+      <div class="ctrl-separator"></div>
+      <div class="toggle-group" id="skip-group">
+        <div id="skip-toggle" class="toggle active"><div class="toggle-knob"></div></div>
+        <span>跳过静默</span>
+      </div>
+      <div class="ctrl-separator"></div>
+      <div class="zoom-controls">
+        <button id="btn-zoom-out" class="icon-btn" title="缩小">&#8722;</button>
+        <span id="zoom-display">100%</span>
+        <button id="btn-zoom-in" class="icon-btn" title="放大">+</button>
+        <div class="ctrl-separator"></div>
+        <button id="btn-fit" class="text-btn active" title="适应窗口">适应</button>
+        <button id="btn-original" class="text-btn" title="原始大小">1:1</button>
+      </div>
+    </div>
+    <div id="shortcut-bar">
+      <kbd>Space</kbd> 暂停/播放
+      <span class="hint-sep">|</span>
+      <kbd>&#8592; &#8594;</kbd> 快退/快进 10s
+      <span class="hint-sep">|</span>
+      <kbd>+/-</kbd> 变速
+    </div>
+  </div>
+  <div id="toast-container"></div>
+</div>
+
+<!-- RID is set by player-standalone.js from URL params (inline scripts blocked by CSP) -->
+
+<!-- Scripts: libs -> constants -> modules (app.js loaded dynamically by player-standalone.js) -->
+<script src="lib/pako.min.js"></script>
+<script src="lib/rle.js"></script>
+<script src="js/constants.js"></script>
+<script src="js/ext-bridge.js"></script>
+<script src="js/shared-utils.js"></script>
+<script src="js/ai-settings.js"></script>
+<script src="js/prompt-templates.js"></script>
+<script src="js/report-cache.js"></script>
+<script src="js/ai-analyzer.js"></script>
+<script src="js/report-panel.js"></script>
+<script src="js/timeline-markers.js"></script>
+<script src="js/host-resolver.js"></script>
+<script src="js/cache-manager.js"></script>
+<script src="js/downloader.js"></script>
+<script src="js/parser.js"></script>
+<script src="js/decoder.js"></script>
+<script src="js/image-cache.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/player.js"></script>
+<script src="js/zoom.js"></script>
+<script src="js/notes.js"></script>
+<script src="js/history.js"></script>
+<script src="js/onboarding.js"></script>
+<!-- player-standalone.js reads server URL from storage, sets __TP_SERVER, then loads app.js -->
+<script src="player-standalone.js"></script>
+</body>
+</html>

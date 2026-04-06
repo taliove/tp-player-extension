@@ -1,11 +1,18 @@
 {
     "manifest_version": 3,
-    "name": "Teleport RDP Web Player",
-    "version": "1.0.0",
-    "description": "在浏览器中播放 Teleport RDP 录屏，替代 tp-player 桌面应用",
+    "name": "Teleport Assessment Reviewer",
+    "version": "2.0.0",
+    "description": "技术机试录像审阅工具",
     "background": { "service_worker": "background.js" },
-    "permissions": ["storage"],
+    "permissions": ["storage", "sidePanel", "alarms"],
     "host_permissions": ["https://api.anthropic.com/*", "https://api.openai.com/*", "*://*/*"],
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": { "128": "icons/icon128.png" }
+    },
+    "side_panel": {
+        "default_path": "sidepanel.html"
+    },
     "content_scripts": [
         {
             "matches": ["*://*/audit/*", "*://*/ops/*", "*://*/asset/*", "*://*/user/*", "*://*/system/*", "*://*/dashboard*"],
@@ -26,7 +33,7 @@
         }
     ],
     "web_accessible_resources": [{
-        "resources": ["css/*", "js/*", "lib/*"],
+        "resources": ["css/*", "js/*", "lib/*", "player.html"],
         "matches": ["<all_urls>"]
     }],
     "icons": {
