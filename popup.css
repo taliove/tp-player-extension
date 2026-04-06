@@ -6,53 +6,53 @@
 
 body {
     width: 340px;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
-    font-size: 13px;
-    color: #e0e0e0;
-    background: #1c1c1e;
+    font-family: var(--font-stack);
+    font-size: var(--font-base);
+    color: var(--text-primary);
+    background: var(--bg-primary);
 }
 
 .popup-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 14px 16px 10px;
-    border-bottom: 1px solid #2c2c2e;
+    gap: var(--space-md);
+    padding: 14px var(--space-xl) 10px;
+    border-bottom: 1px solid var(--bg-secondary);
 }
 
 .popup-logo {
     width: 24px;
     height: 24px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
 }
 
 .popup-title {
-    font-size: 14px;
+    font-size: var(--font-lg);
     font-weight: 600;
     flex: 1;
 }
 
 .popup-version {
-    font-size: 11px;
-    color: #8e8e93;
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
 }
 
 .popup-status-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #30d158;
+    background: var(--success);
 }
 
 .popup-form {
-    padding: 12px 16px;
+    padding: var(--space-lg) var(--space-xl);
 }
 
 .popup-label {
     display: block;
-    font-size: 11px;
-    color: #8e8e93;
-    margin-bottom: 4px;
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    margin-bottom: var(--space-xs);
     margin-top: 10px;
 }
 
@@ -63,36 +63,36 @@ body {
 .popup-input {
     display: block;
     width: 100%;
-    padding: 8px 10px;
-    font-size: 13px;
-    color: #e0e0e0;
-    background: #2c2c2e;
-    border: 1px solid #3a3a3c;
-    border-radius: 6px;
+    padding: var(--space-md) 10px;
+    font-size: var(--font-base);
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--radius-sm);
     outline: none;
-    transition: border-color 0.15s;
+    transition: border-color var(--anim-fast);
 }
 
 .popup-input:focus {
-    border-color: #0a84ff;
+    border-color: var(--accent);
 }
 
 .popup-input::placeholder {
-    color: #636366;
+    color: var(--text-tertiary);
 }
 
 .popup-checkbox {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-top: 12px;
+    gap: var(--space-sm);
+    margin-top: var(--space-lg);
     cursor: pointer;
-    font-size: 12px;
-    color: #8e8e93;
+    font-size: var(--font-md);
+    color: var(--text-secondary);
 }
 
 .popup-checkbox input[type="checkbox"] {
-    accent-color: #0a84ff;
+    accent-color: var(--accent);
 }
 
 .popup-btn-primary {
@@ -100,14 +100,14 @@ body {
     width: 100%;
     padding: 9px 0;
     margin-top: 14px;
-    font-size: 13px;
+    font-size: var(--font-base);
     font-weight: 600;
     color: #fff;
-    background: #0a84ff;
+    background: var(--accent);
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: opacity 0.15s;
+    transition: opacity var(--anim-fast);
 }
 
 .popup-btn-primary:hover {
@@ -145,33 +145,33 @@ body {
 .popup-btn-secondary {
     display: block;
     width: 100%;
-    padding: 8px 0;
-    margin-top: 8px;
-    font-size: 12px;
-    color: #ff453a;
+    padding: var(--space-md) 0;
+    margin-top: var(--space-md);
+    font-size: var(--font-md);
+    color: var(--danger);
     background: transparent;
-    border: 1px solid #3a3a3c;
-    border-radius: 6px;
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background var(--anim-fast);
 }
 
 .popup-btn-secondary:hover {
-    background: #2c2c2e;
+    background: var(--bg-secondary);
 }
 
 .popup-error {
     margin-top: 10px;
-    padding: 8px 10px;
-    font-size: 12px;
-    color: #ff453a;
+    padding: var(--space-md) 10px;
+    font-size: var(--font-md);
+    color: var(--danger);
     background: rgba(255,69,58,0.1);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
 }
 
 .popup-captcha-row {
     display: flex;
-    gap: 8px;
+    gap: var(--space-md);
     align-items: center;
 }
 
@@ -183,36 +183,36 @@ body {
     height: 36px;
     border-radius: 4px;
     cursor: pointer;
-    background: #3a3a3c;
+    background: var(--bg-tertiary);
     min-width: 90px;
 }
 
 .popup-footer {
-    padding: 10px 16px 14px;
-    font-size: 11px;
-    color: #636366;
+    padding: 10px var(--space-xl) 14px;
+    font-size: var(--font-sm);
+    color: var(--text-tertiary);
     text-align: center;
-    border-top: 1px solid #2c2c2e;
+    border-top: 1px solid var(--bg-secondary);
 }
 
 .popup-status-info {
-    padding: 12px 16px;
+    padding: var(--space-lg) var(--space-xl);
 }
 
 .popup-status-row {
     display: flex;
     justify-content: space-between;
-    padding: 6px 0;
+    padding: var(--space-sm) 0;
 }
 
 .popup-status-label {
-    color: #8e8e93;
-    font-size: 12px;
+    color: var(--text-secondary);
+    font-size: var(--font-md);
 }
 
 .popup-status-value {
-    color: #e0e0e0;
-    font-size: 12px;
+    color: var(--text-primary);
+    font-size: var(--font-md);
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -220,5 +220,61 @@ body {
 }
 
 .popup-actions {
-    padding: 0 16px 14px;
+    padding: 0 var(--space-xl) 14px;
+}
+
+.popup-btn-tertiary {
+    display: block;
+    width: 100%;
+    padding: var(--space-md) 0;
+    margin-top: var(--space-md);
+    font-size: var(--font-md);
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background var(--anim-fast);
+}
+
+.popup-btn-tertiary:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.popup-back-btn {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: var(--font-lg);
+    cursor: pointer;
+    padding: 0 var(--space-xs);
+}
+
+.popup-success {
+    margin-top: 10px;
+    padding: var(--space-md) 10px;
+    font-size: var(--font-md);
+    color: var(--success);
+    background: rgba(48,209,88,0.1);
+    border-radius: var(--radius-sm);
+}
+
+.popup-captcha-spinner {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--bg-tertiary);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+.popup-url-warning {
+    margin-top: var(--space-xs);
+    font-size: var(--font-sm);
+    color: var(--warning);
 }
