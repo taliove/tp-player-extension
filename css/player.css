@@ -250,15 +250,15 @@ body > :not(#player-app):not(script) {
     background: rgba(255, 255, 255, 0.10);
     border-radius: 0 0 var(--radius-sm) var(--radius-sm);
     position: relative;
-    transition: height 0.15s ease;
 }
 
-#progress-container:hover #progress-bar { height: 6px; }
+/* No hover height change — prevents layout jump */
 
 /* --- Hover preview --- */
 #hover-preview {
     position: absolute;
     bottom: 100%;
+    left: 0;
     margin-bottom: 8px;
     pointer-events: none;
     z-index: 80;
@@ -267,6 +267,8 @@ body > :not(#player-app):not(script) {
     box-shadow: var(--shadow-md);
     padding: 4px;
     text-align: center;
+    will-change: transform;
+    width: 168px;
 }
 
 #hover-preview-img {

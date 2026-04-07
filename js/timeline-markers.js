@@ -92,10 +92,11 @@ TPP.createTimelineMarkers = function(opts) {
                 if (sorted[j] <= buckets[i]) rank = j;
             }
             var norm = sorted.length > 1 ? rank / (sorted.length - 1) : 1;
-            // Warm gradient: amber → red-orange
-            var g = Math.round(170 - norm * 90);
-            var b = Math.round(50 - norm * 20);
-            ctx.fillStyle = 'rgba(255,' + g + ',' + b + ',' + (0.3 + norm * 0.5) + ')';
+            // Subtle warm gradient: dark amber → muted orange
+            var r = Math.round(200 + norm * 55);
+            var g = Math.round(140 - norm * 70);
+            var b = Math.round(40 - norm * 20);
+            ctx.fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + (0.12 + norm * 0.28) + ')';
             ctx.fillRect(Math.floor(i * barW), 0, Math.ceil(barW), h);
         }
     }
@@ -117,13 +118,15 @@ TPP.createTimelineMarkers = function(opts) {
         var preview = document.getElementById('hover-preview');
         var previewImg = document.getElementById('hover-preview-img');
         var previewTime = document.getElementById('hover-preview-time');
-        if (!preview || !heatmapBar) return;
+        if (!preview || !progressContainer) return;
 
         var totalSec = totalMs / 1000;
+        var previewW = 168; // Fixed width, matches CSS
+        var lastBest = -1;
 
         function onMove(e) {
             if (thumbnails.length === 0) { preview.style.display = 'none'; return; }
-            var rect = heatmapBar.getBoundingClientRect();
+            var rect = progressContainer.getBoundingClientRect();
             var x = e.clientX - rect.left;
             var pct = Math.max(0, Math.min(1, x / rect.width));
             var timeSec = pct * totalSec;
@@ -136,22 +139,25 @@ TPP.createTimelineMarkers = function(opts) {
                 else hi = mid - 1;
             }
 
-            previewImg.src = thumbnails[best].dataUrl;
+            // Only update img src when the nearest thumbnail changes (avoids redundant reflows)
+            if (best !== lastBest) {
+                previewImg.src = thumbnails[best].dataUrl;
+                lastBest = best;
+            }
             previewTime.textContent = formatTs(timeSec);
             preview.style.display = '';
 
-            // Position: centered above cursor, clamped to viewport
-            var containerRect = progressContainer.getBoundingClientRect();
-            var previewW = preview.offsetWidth || 168;
+            // Position with transform (GPU-accelerated, no reflow)
             var leftPx = x - previewW / 2;
             if (leftPx < 0) leftPx = 0;
-            if (leftPx + previewW > containerRect.width) leftPx = containerRect.width - previewW;
-            preview.style.left = leftPx + 'px';
+            if (leftPx + previewW > rect.width) leftPx = rect.width - previewW;
+            preview.style.transform = 'translateX(' + leftPx + 'px)';
         }
 
-        heatmapBar.addEventListener('mousemove', onMove);
-        heatmapBar.addEventListener('mouseleave', function() {
+        progressContainer.addEventListener('mousemove', onMove);
+        progressContainer.addEventListener('mouseleave', function() {
             preview.style.display = 'none';
+            lastBest = -1;
         });
     }
 
