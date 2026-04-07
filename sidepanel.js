@@ -588,11 +588,133 @@
         });
     });
 
-    // --- Unauth -> login ---
-    document.getElementById('btn-go-login').addEventListener('click', function() {
-        chrome.action.setPopup({ popup: 'popup.html' });
-        chrome.action.openPopup();
+    // --- Sidebar Login ---
+    var loginUrl = document.getElementById('sp-login-url');
+    var loginUsername = document.getElementById('sp-login-username');
+    var loginPassword = document.getElementById('sp-login-password');
+    var loginCaptcha = document.getElementById('sp-login-captcha');
+    var loginCaptchaGroup = document.getElementById('sp-login-captcha-group');
+    var loginCaptchaImg = document.getElementById('sp-login-captcha-img');
+    var loginCaptchaSpinner = document.getElementById('sp-login-captcha-spinner');
+    var loginUrlWarning = document.getElementById('sp-login-url-warning');
+    var loginRemember = document.getElementById('sp-login-remember');
+    var loginError = document.getElementById('sp-login-error');
+    var btnLogin = document.getElementById('btn-sp-login');
+    var loginCaptchaVisible = false;
+    var loginCaptchaDetected = false;
+
+    // Pre-fill saved URL and username
+    chrome.storage.local.get(['tp_server_url', 'tp_username'], function(data) {
+        if (data.tp_server_url) loginUrl.value = data.tp_server_url;
+        if (data.tp_username) loginUsername.value = data.tp_username;
+        if (data.tp_server_url && !loginCaptchaDetected) detectCaptcha(data.tp_server_url);
     });
+
+    function detectCaptcha(serverUrl) {
+        if (!serverUrl || loginCaptchaDetected) return;
+        var url = serverUrl.replace(/\/+$/, '');
+        if (!/^https?:\/\//.test(url)) url = 'https://' + url;
+        loginCaptchaGroup.style.display = '';
+        loginCaptchaSpinner.style.display = '';
+        loginCaptchaImg.style.display = 'none';
+        loginCaptchaVisible = false;
+        var timeout = setTimeout(function() {
+            loginCaptchaGroup.style.display = 'none';
+            loginCaptchaVisible = false;
+            loginCaptchaDetected = true;
+        }, 3000);
+        chrome.runtime.sendMessage({
+            type: 'fetch-captcha',
+            url: url + '/auth/captcha?h=36&_t=' + Date.now()
+        }, function(resp) {
+            clearTimeout(timeout);
+            loginCaptchaSpinner.style.display = 'none';
+            if (resp && resp.success && resp.dataUrl) {
+                loginCaptchaImg.src = resp.dataUrl;
+                loginCaptchaImg.style.display = '';
+                loginCaptchaVisible = true;
+                loginCaptchaDetected = true;
+            } else {
+                loginCaptchaGroup.style.display = 'none';
+                loginCaptchaVisible = false;
+                loginCaptchaDetected = true;
+            }
+        });
+    }
+
+    function refreshCaptcha(serverUrl) {
+        if (!serverUrl) return;
+        var url = serverUrl.replace(/\/+$/, '');
+        if (!/^https?:\/\//.test(url)) url = 'https://' + url;
+        chrome.runtime.sendMessage({
+            type: 'fetch-captcha',
+            url: url + '/auth/captcha?h=36&_t=' + Date.now()
+        }, function(resp) {
+            if (resp && resp.success && resp.dataUrl) loginCaptchaImg.src = resp.dataUrl;
+        });
+    }
+
+    loginUrl.addEventListener('blur', function() {
+        var url = loginUrl.value.trim();
+        if (url && !loginCaptchaDetected) detectCaptcha(url);
+    });
+
+    loginCaptchaImg.addEventListener('click', function() {
+        refreshCaptcha(loginUrl.value.trim());
+    });
+
+    btnLogin.addEventListener('click', function() {
+        var url = loginUrl.value.trim();
+        var username = loginUsername.value.trim();
+        var password = loginPassword.value;
+        var captcha = loginCaptchaVisible ? loginCaptcha.value.trim() : '';
+        var remember = loginRemember.checked;
+
+        if (!url) { showLoginError('请输入服务器地址'); loginUrl.focus(); return; }
+        if (!username) { showLoginError('请输入用户名'); loginUsername.focus(); return; }
+        if (!password) { showLoginError('请输入密码'); loginPassword.focus(); return; }
+        if (loginCaptchaVisible && !captcha) { showLoginError('请输入验证码'); loginCaptcha.focus(); return; }
+
+        if (!/^https?:\/\//.test(url)) url = 'https://' + url;
+        url = url.replace(/\/+$/, '');
+
+        btnLogin.disabled = true;
+        btnLogin.textContent = '连接中...';
+        loginError.style.display = 'none';
+
+        chrome.runtime.sendMessage({
+            type: 'login',
+            url: url,
+            username: username,
+            password: password,
+            captcha: captcha,
+            remember: remember
+        }, function(response) {
+            btnLogin.disabled = false;
+            btnLogin.textContent = '连接';
+            if (response && response.success) {
+                // Auth state change listener will switch to record list
+            } else {
+                showLoginError(response && response.error ? response.error : '连接失败，请检查地址和凭据');
+                if (loginCaptchaVisible) {
+                    loginCaptcha.value = '';
+                    refreshCaptcha(url);
+                }
+            }
+        });
+    });
+
+    // Enter key submits login
+    [loginUrl, loginUsername, loginPassword, loginCaptcha].forEach(function(el) {
+        el.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') btnLogin.click();
+        });
+    });
+
+    function showLoginError(msg) {
+        loginError.textContent = msg;
+        loginError.style.display = '';
+    }
 
     // --- Auto-refresh from service worker ---
     chrome.runtime.onMessage.addListener(function(message) {

@@ -73,8 +73,34 @@
     </div>
 
     <div id="sp-unauth" class="sp-state" style="display:none">
-        <div class="sp-state-text">请先登录</div>
-        <button id="btn-go-login" class="sp-state-btn">登录</button>
+        <div class="sp-login-form">
+            <div class="sp-login-header">
+                <img src="icons/icon128.png" class="sp-login-logo" alt="">
+                <div class="sp-login-title">Teleport 机试审阅</div>
+            </div>
+            <label class="sp-settings-label">服务器地址</label>
+            <input type="url" id="sp-login-url" class="sp-settings-input" placeholder="https://teleport.company.com" autocomplete="url">
+            <div id="sp-login-url-warning" class="sp-login-warning" style="display:none"></div>
+            <label class="sp-settings-label">用户名</label>
+            <input type="text" id="sp-login-username" class="sp-settings-input" placeholder="请输入用户名" autocomplete="username">
+            <label class="sp-settings-label">密码</label>
+            <input type="password" id="sp-login-password" class="sp-settings-input" placeholder="请输入密码" autocomplete="current-password">
+            <div id="sp-login-captcha-group" style="display:none">
+                <label class="sp-settings-label">验证码</label>
+                <div class="sp-login-captcha-row">
+                    <input type="text" id="sp-login-captcha" class="sp-settings-input sp-login-captcha-input" placeholder="请输入验证码" autocomplete="off">
+                    <div id="sp-login-captcha-spinner" class="sp-login-spinner" style="display:none"></div>
+                    <img id="sp-login-captcha-img" class="sp-login-captcha-img" alt="验证码" title="点击刷新" style="display:none">
+                </div>
+            </div>
+            <label class="sp-login-checkbox">
+                <input type="checkbox" id="sp-login-remember" checked>
+                <span>记住密码</span>
+            </label>
+            <button id="btn-sp-login" class="sp-settings-save">连接</button>
+            <div id="sp-login-error" class="sp-settings-error" style="display:none"></div>
+            <div class="sp-login-footer">首次使用？联系管理员获取服务器地址和账号。</div>
+        </div>
     </div>
 
     <!-- Footer -->

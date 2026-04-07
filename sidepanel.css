@@ -578,6 +578,87 @@ body {
     background: var(--bg-secondary);
 }
 
+/* --- Sidebar Login Form --- */
+.sp-login-form {
+    padding: var(--space-xl);
+    max-width: 320px;
+    margin: 0 auto;
+}
+
+.sp-login-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-bottom: var(--space-xl);
+}
+
+.sp-login-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+}
+
+.sp-login-title {
+    font-size: var(--font-lg);
+    font-weight: 600;
+}
+
+.sp-login-warning {
+    margin-top: var(--space-xs);
+    font-size: var(--font-sm);
+    color: var(--warning);
+}
+
+.sp-login-captcha-row {
+    display: flex;
+    gap: var(--space-md);
+    align-items: center;
+}
+
+.sp-login-captcha-input {
+    flex: 1;
+}
+
+.sp-login-captcha-img {
+    height: 36px;
+    border-radius: 4px;
+    cursor: pointer;
+    background: var(--bg-tertiary);
+    min-width: 90px;
+}
+
+.sp-login-spinner {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    border: 2px solid var(--bg-tertiary);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+.sp-login-checkbox {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-top: var(--space-lg);
+    margin-bottom: var(--space-lg);
+    cursor: pointer;
+    font-size: var(--font-md);
+    color: var(--text-secondary);
+}
+
+.sp-login-checkbox input[type="checkbox"] {
+    accent-color: var(--accent);
+}
+
+.sp-login-footer {
+    margin-top: var(--space-lg);
+    font-size: var(--font-sm);
+    color: var(--text-tertiary);
+    text-align: center;
+}
+
 /* --- Scrollbar --- */
 .sp-card-list::-webkit-scrollbar {
     width: 4px;
