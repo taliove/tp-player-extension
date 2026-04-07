@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Teleport Assessment Reviewer",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "description": "技术机试录像审阅工具",
     "background": { "service_worker": "background.js" },
     "permissions": ["storage", "sidePanel", "alarms"],
