@@ -36,21 +36,18 @@ chrome.runtime.onConnect.addListener(function(port) {
 });
 
 // --- Top-level init (runs on every service worker wake) ---
+// Always open sidebar on icon click — login is now in the sidebar
 (function() {
+    chrome.action.setPopup({ popup: '' });
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(function() {});
     chrome.storage.local.get('tp_auth_state', function(data) {
         if (data.tp_auth_state === 'authenticated') {
-            chrome.action.setPopup({ popup: '' });
-            chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(function() {});
-            // Ensure alarms exist
             chrome.alarms.get('tp-relogin', function(alarm) {
                 if (!alarm) chrome.alarms.create('tp-relogin', { periodInMinutes: 50 });
             });
             chrome.alarms.get('tp-refresh-records', function(alarm) {
                 if (!alarm) chrome.alarms.create('tp-refresh-records', { periodInMinutes: 1 });
             });
-        } else {
-            chrome.action.setPopup({ popup: 'popup.html' });
-            chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(function() {});
         }
     });
 })();
@@ -112,8 +109,7 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
                 tp_server_url: url,
                 tp_username: username
             });
-            chrome.action.setPopup({ popup: '' });
-            chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(function() {});
+            // Sidebar is always the primary UI — no popup swap needed
             chrome.alarms.create('tp-relogin', { periodInMinutes: 50 });
             chrome.alarms.create('tp-refresh-records', { periodInMinutes: 1 });
             sendResponse({ success: true });
@@ -127,8 +123,7 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
     if (message.type === 'logout') {
         authManager.clearCredentials().then(function() {
             chrome.storage.local.set({ tp_auth_state: 'unauthenticated' });
-            chrome.action.setPopup({ popup: 'popup.html' });
-            chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(function() {});
+            // Sidebar shows login form — no popup swap needed
             chrome.alarms.clear('tp-relogin');
             chrome.alarms.clear('tp-refresh-records');
             sendResponse({ success: true });
