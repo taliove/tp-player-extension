@@ -70,7 +70,11 @@
     var downloadedFileCount = 0;
 
     var player = TPP.createPlayer(renderer, imageCache, {
-        onProgress: function (cur, total) { updateProgressBar(cur, total); },
+        onProgress: function (cur, total) {
+            updateProgressBar(cur, total);
+            // Capture thumbnails during playback
+            if (window.__TP_THUMB_CAPTURE) window.__TP_THUMB_CAPTURE(cur);
+        },
         onEnd: function () { btnPlay.textContent = '\u25B6'; },
         onError: function (err) { console.error('Playback error:', err); },
     });
@@ -505,32 +509,33 @@
                         });
                         timelineMarkers.updateHeatmap();
 
-                        // Generate hover thumbnails from decoded frames
+                        // Thumbnail capture: hook into player's onProgress callback
+                        // Thumbnails are captured from the RENDERED canvas during playback,
+                        // not from raw packet data (RDP frames are delta-encoded, can't random seek)
                         var totalSec = header.timeMs / 1000;
                         if (totalSec >= 60) {
                             var thumbInterval = Math.max(10, totalSec / 100);
                             var thumbs = [];
-                            var nextThumbSec = thumbInterval;
+                            var nextThumbSec = 0;
                             var offCanvas = document.createElement('canvas');
                             offCanvas.width = 160;
                             offCanvas.height = 90;
                             var offCtx = offCanvas.getContext('2d');
-                            // Capture thumbnails by walking through frames sequentially
-                            try {
-                                var memOk = !performance.memory || performance.memory.usedJSHeapSize < 500 * 1024 * 1024;
-                                for (var ti = 0; ti < allPackets.length && thumbs.length < 100 && memOk; ti++) {
-                                    var pkt = allPackets[ti];
-                                    var pktSec = pkt.timeMs / 1000;
-                                    if (pktSec >= nextThumbSec && pkt.type === TPP.TYPE_RDP_IMAGE) {
+                            var thumbCapture = function(curMs) {
+                                var curSec = curMs / 1000;
+                                if (curSec >= nextThumbSec && thumbs.length < 100) {
+                                    if (!performance.memory || performance.memory.usedJSHeapSize < 500 * 1024 * 1024) {
                                         try {
                                             offCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, 160, 90);
-                                            thumbs.push({ time_sec: pktSec, dataUrl: offCanvas.toDataURL('image/jpeg', 0.5) });
-                                        } catch(te) { /* skip corrupt frame */ }
-                                        nextThumbSec += thumbInterval;
+                                            thumbs.push({ time_sec: curSec, dataUrl: offCanvas.toDataURL('image/jpeg', 0.5) });
+                                            timelineMarkers.setThumbnails(thumbs);
+                                        } catch(e) { /* skip */ }
                                     }
+                                    nextThumbSec = curSec + thumbInterval;
                                 }
-                                if (thumbs.length > 0) timelineMarkers.setThumbnails(thumbs);
-                            } catch(thumbErr) { /* thumbnail generation failed, non-critical */ }
+                            };
+                            // Store capture function so onProgress can call it
+                            window.__TP_THUMB_CAPTURE = thumbCapture;
                         }
 
                         // If a cached report with markers was already loaded, show them
@@ -842,10 +847,14 @@
         }
         allDataReady = false;
         downloadedFileCount = 0;
+        window.__TP_THUMB_CAPTURE = null;
 
         // 8. Reset player
         player = TPP.createPlayer(renderer, imageCache, {
-            onProgress: function (cur, total) { updateProgressBar(cur, total); },
+            onProgress: function (cur, total) {
+                updateProgressBar(cur, total);
+                if (window.__TP_THUMB_CAPTURE) window.__TP_THUMB_CAPTURE(cur);
+            },
             onEnd: function () { btnPlay.textContent = '\u25B6'; },
             onError: function (err) { console.error('Playback error:', err); },
         });
