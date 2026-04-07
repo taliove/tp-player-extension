@@ -228,11 +228,19 @@ body > :not(#player-app):not(script) {
 /* === Progress Bar === */
 #progress-container {
     flex: 1;
-    height: 28px;
     display: flex;
-    align-items: center;
+    flex-direction: column;
     cursor: pointer;
     padding: 0 4px;
+    position: relative;
+}
+
+/* --- Heatmap bar (60px tall, above progress bar) --- */
+#heatmap-bar {
+    width: 100%;
+    height: 48px;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    overflow: hidden;
     position: relative;
 }
 
@@ -240,12 +248,41 @@ body > :not(#player-app):not(script) {
     width: 100%;
     height: 4px;
     background: rgba(255, 255, 255, 0.10);
-    border-radius: var(--radius-pill);
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
     position: relative;
     transition: height 0.15s ease;
 }
 
 #progress-container:hover #progress-bar { height: 6px; }
+
+/* --- Hover preview --- */
+#hover-preview {
+    position: absolute;
+    bottom: 100%;
+    margin-bottom: 8px;
+    pointer-events: none;
+    z-index: 80;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    padding: 4px;
+    text-align: center;
+}
+
+#hover-preview-img {
+    width: 160px;
+    height: 90px;
+    border-radius: 3px;
+    display: block;
+    background: var(--bg-tertiary);
+}
+
+#hover-preview-time {
+    display: block;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
 
 #progress-played {
     height: 100%;
@@ -1834,7 +1871,7 @@ body > :not(#player-app):not(script) {
 
 #ai-marker-track {
     position: relative;
-    height: 16px;
+    height: 20px;
     margin-bottom: 2px;
     pointer-events: auto;
 }
@@ -1843,22 +1880,31 @@ body > :not(#player-app):not(script) {
     position: absolute;
     top: 50%;
     transform: translate(-50%, -50%);
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
+    width: auto;
+    height: auto;
+    font-size: 10px;
+    line-height: 1;
     cursor: pointer;
     z-index: 2;
     transition: transform 0.15s;
-    border: 1.5px solid rgba(0,0,0,0.3);
+    border: none;
+    background: none;
+    outline: none;
 }
 .ai-marker:hover {
     transform: translate(-50%, -50%) scale(1.5);
 }
-.ai-marker-progress { background: #4cd964; }
-.ai-marker-good { background: #5ac8fa; }
-.ai-marker-stuck { background: #ffcc02; }
-.ai-marker-suspicious { background: #ff3b30; }
-.ai-marker-info { background: rgba(255,255,255,0.5); }
+.ai-marker:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+.ai-marker-progress { color: #4cd964; }
+.ai-marker-good { color: #5ac8fa; }
+.ai-marker-stuck { color: #ffcc02; }
+.ai-marker-suspicious { color: #ff3b30; }
+.ai-marker-info { color: rgba(255,255,255,0.5); }
+.ai-marker-dismissed { color: rgba(255,255,255,0.25); }
 
 .ai-marker-duration {
     position: absolute;

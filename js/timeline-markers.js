@@ -1,20 +1,23 @@
 // Teleport RDP Web Player — Timeline Markers
-// Heatmap overlay, AI marker placement, and mini-card popups.
+// Smart timeline: heatmap overlay, AI marker placement, mini-card popups, hover thumbnails.
 
 TPP.createTimelineMarkers = function(opts) {
     var allPackets = opts.allPackets;
     var totalMs = opts.totalMs;
+    var progressContainer = opts.progressContainer || document.getElementById('progress-container');
     var progressBar = opts.progressBar;
     var markerTrack = opts.markerTrack;
+    var heatmapBar = opts.heatmapBar || document.getElementById('heatmap-bar');
     var onSeek = opts.onSeek;
 
-    var BUCKET_MS = 5000;
     var canvas = null;
     var resizeTimer = null;
     var activeCard = null;
     var docClickHandler = null;
+    var thumbnails = []; // [{time_sec, dataUrl}]
 
-    var KNOWN_TYPES = { progress: 1, good: 1, stuck: 1, suspicious: 1, info: 1 };
+    var KNOWN_TYPES = { progress: 1, good: 1, stuck: 1, suspicious: 1, info: 1, dismissed: 1 };
+    var TYPE_SHAPES = { progress: '\u25CF', good: '\u2605', stuck: '\u25B2', suspicious: '\u25C6', info: '\u2500', dismissed: '\u25C7' };
 
     // --- Helpers ---
 
@@ -30,24 +33,30 @@ TPP.createTimelineMarkers = function(opts) {
         };
     }
 
-    // --- Heatmap ---
+    // --- Heatmap (drawn in #heatmap-bar, not inside progress-bar) ---
 
     function ensureCanvas() {
         if (canvas) return canvas;
+        if (!heatmapBar) return null;
         canvas = document.createElement('canvas');
-        canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;border-radius:inherit;pointer-events:none;';
-        progressBar.insertBefore(canvas, progressBar.firstChild);
+        canvas.style.cssText = 'width:100%;height:100%;border-radius:inherit;display:block;';
+        heatmapBar.appendChild(canvas);
         return canvas;
     }
 
     function buildBuckets() {
-        var count = Math.ceil(totalMs / BUCKET_MS);
+        var totalSec = totalMs / 1000;
+        if (totalSec < 60) return []; // Skip for short recordings
+        // Dynamic bucket size: max 200 buckets
+        var bucketSec = Math.max(5, totalSec / 200);
+        var bucketMs = bucketSec * 1000;
+        var count = Math.ceil(totalMs / bucketMs);
         var buckets = new Array(count);
         var i;
         for (i = 0; i < count; i++) buckets[i] = 0;
         for (i = 0; i < allPackets.length; i++) {
             if (allPackets[i].type === TPP.TYPE_RDP_IMAGE) {
-                var idx = Math.floor(allPackets[i].timeMs / BUCKET_MS);
+                var idx = Math.floor(allPackets[i].timeMs / bucketMs);
                 if (idx >= 0 && idx < count) buckets[idx]++;
             }
         }
@@ -56,31 +65,37 @@ TPP.createTimelineMarkers = function(opts) {
 
     function renderHeatmap() {
         var cvs = ensureCanvas();
-        var rect = progressBar.getBoundingClientRect();
-        var w = Math.round(rect.width * (window.devicePixelRatio || 1));
-        var h = Math.round(rect.height * (window.devicePixelRatio || 1));
+        if (!cvs || !heatmapBar) return;
+        var rect = heatmapBar.getBoundingClientRect();
+        var dpr = window.devicePixelRatio || 1;
+        var w = Math.round(rect.width * dpr);
+        var h = Math.round(rect.height * dpr);
         cvs.width = w;
         cvs.height = h;
 
         var buckets = buildBuckets();
-        var max = 0;
-        var i;
-        for (i = 0; i < buckets.length; i++) {
-            if (buckets[i] > max) max = buckets[i];
-        }
-        if (max === 0) return;
+        if (buckets.length === 0) return;
+
+        // Percentile-based normalization
+        var sorted = buckets.slice().filter(function(v) { return v > 0; }).sort(function(a, b) { return a - b; });
+        if (sorted.length === 0) return;
 
         var ctx = cvs.getContext('2d');
         ctx.clearRect(0, 0, w, h);
         var barW = w / buckets.length;
 
-        for (i = 0; i < buckets.length; i++) {
-            var norm = buckets[i] / max;
-            if (norm <= 0) continue;
-            // warm amber rgba(255,170,50) -> red-orange rgba(255,80,30) at peak
+        for (var i = 0; i < buckets.length; i++) {
+            if (buckets[i] <= 0) continue;
+            // Percentile rank: position in sorted non-zero values
+            var rank = 0;
+            for (var j = 0; j < sorted.length; j++) {
+                if (sorted[j] <= buckets[i]) rank = j;
+            }
+            var norm = sorted.length > 1 ? rank / (sorted.length - 1) : 1;
+            // Warm gradient: amber → red-orange
             var g = Math.round(170 - norm * 90);
             var b = Math.round(50 - norm * 20);
-            ctx.fillStyle = 'rgba(255,' + g + ',' + b + ',' + (norm * 0.6) + ')';
+            ctx.fillStyle = 'rgba(255,' + g + ',' + b + ',' + (0.3 + norm * 0.5) + ')';
             ctx.fillRect(Math.floor(i * barW), 0, Math.ceil(barW), h);
         }
     }
@@ -91,6 +106,56 @@ TPP.createTimelineMarkers = function(opts) {
 
     var onResize = debounce(function() { if (canvas) renderHeatmap(); }, 200);
     window.addEventListener('resize', onResize);
+
+    // --- Hover Preview Thumbnails ---
+
+    function setThumbnails(thumbs) {
+        thumbnails = thumbs || [];
+    }
+
+    function initHoverPreview() {
+        var preview = document.getElementById('hover-preview');
+        var previewImg = document.getElementById('hover-preview-img');
+        var previewTime = document.getElementById('hover-preview-time');
+        if (!preview || !heatmapBar) return;
+
+        var totalSec = totalMs / 1000;
+
+        function onMove(e) {
+            if (thumbnails.length === 0) { preview.style.display = 'none'; return; }
+            var rect = heatmapBar.getBoundingClientRect();
+            var x = e.clientX - rect.left;
+            var pct = Math.max(0, Math.min(1, x / rect.width));
+            var timeSec = pct * totalSec;
+
+            // Binary search nearest thumbnail
+            var lo = 0, hi = thumbnails.length - 1, best = 0;
+            while (lo <= hi) {
+                var mid = (lo + hi) >> 1;
+                if (thumbnails[mid].time_sec <= timeSec) { best = mid; lo = mid + 1; }
+                else hi = mid - 1;
+            }
+
+            previewImg.src = thumbnails[best].dataUrl;
+            previewTime.textContent = formatTs(timeSec);
+            preview.style.display = '';
+
+            // Position: centered above cursor, clamped to viewport
+            var containerRect = progressContainer.getBoundingClientRect();
+            var previewW = preview.offsetWidth || 168;
+            var leftPx = x - previewW / 2;
+            if (leftPx < 0) leftPx = 0;
+            if (leftPx + previewW > containerRect.width) leftPx = containerRect.width - previewW;
+            preview.style.left = leftPx + 'px';
+        }
+
+        heatmapBar.addEventListener('mousemove', onMove);
+        heatmapBar.addEventListener('mouseleave', function() {
+            preview.style.display = 'none';
+        });
+    }
+
+    initHoverPreview();
 
     // --- Mini-Card ---
 
@@ -118,6 +183,7 @@ TPP.createTimelineMarkers = function(opts) {
 
         var typeDot = document.createElement('span');
         typeDot.className = 'ai-mini-card-type ai-marker-' + type;
+        typeDot.textContent = TYPE_SHAPES[type] || '\u25CF';
         header.appendChild(typeDot);
 
         var timeSpan = document.createElement('span');
@@ -128,6 +194,7 @@ TPP.createTimelineMarkers = function(opts) {
         var labelSpan = document.createElement('span');
         labelSpan.className = 'ai-mini-card-label';
         labelSpan.textContent = marker.label || '';
+        if (type === 'dismissed') labelSpan.style.textDecoration = 'line-through';
         header.appendChild(labelSpan);
 
         card.appendChild(header);
@@ -145,21 +212,17 @@ TPP.createTimelineMarkers = function(opts) {
         markerTrack.appendChild(card);
         activeCard = card;
 
-        // Position above marker, horizontally centered
+        // Position above marker
         var trackRect = markerTrack.getBoundingClientRect();
         var markerRect = markerEl.getBoundingClientRect();
         var cardW = card.offsetWidth;
         var leftPx = (markerRect.left - trackRect.left) + markerRect.width / 2 - cardW / 2;
-
-        // Edge-clamp
         if (leftPx < 0) leftPx = 0;
         if (leftPx + cardW > trackRect.width) leftPx = trackRect.width - cardW;
-
         card.style.position = 'absolute';
         card.style.bottom = markerTrack.offsetHeight + 'px';
         card.style.left = leftPx + 'px';
 
-        // Dismiss on outside click (deferred to avoid same-click dismiss)
         setTimeout(function() {
             docClickHandler = function(e) {
                 if (!card.contains(e.target)) dismissCard();
@@ -189,7 +252,10 @@ TPP.createTimelineMarkers = function(opts) {
             var el = document.createElement('div');
             el.className = 'ai-marker ai-marker-' + type;
             el.style.left = (sec / totalSec) * 100 + '%';
-            el.title = m.label || '';
+            el.title = (TYPE_SHAPES[type] || '') + ' ' + (m.label || '');
+            el.textContent = TYPE_SHAPES[type] || '\u25CF';
+            el.setAttribute('tabindex', '0');
+            el.setAttribute('role', 'button');
 
             // Duration span
             if (m.duration_sec && m.duration_sec > 0) {
@@ -203,6 +269,12 @@ TPP.createTimelineMarkers = function(opts) {
                 markerEl.addEventListener('click', function(e) {
                     e.stopPropagation();
                     showMiniCard(marker, markerEl);
+                });
+                markerEl.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onSeek(marker.time_sec * 1000);
+                    }
                 });
             })(m, el);
 
@@ -221,12 +293,14 @@ TPP.createTimelineMarkers = function(opts) {
             canvas = null;
         }
         clearMarkers();
+        thumbnails = [];
     }
 
     return {
         updateHeatmap: updateHeatmap,
         setMarkers: setMarkers,
         clearMarkers: clearMarkers,
+        setThumbnails: setThumbnails,
         destroy: destroy
     };
 };

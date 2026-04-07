@@ -489,18 +489,50 @@
 
                     // Initialize timeline markers (heatmap + AI markers)
                     var markerTrack = document.getElementById('ai-marker-track');
+                    var heatmapBar = document.getElementById('heatmap-bar');
                     if (markerTrack && TPP.createTimelineMarkers) {
                         timelineMarkers = TPP.createTimelineMarkers({
                             allPackets: allPackets,
                             totalMs: header.timeMs,
+                            progressContainer: document.getElementById('progress-container'),
                             progressBar: progressBar,
                             markerTrack: markerTrack,
+                            heatmapBar: heatmapBar,
                             onSeek: function(timeMs) {
                                 player.seek(timeMs);
                                 updateProgressBar(timeMs, header.timeMs);
                             }
                         });
                         timelineMarkers.updateHeatmap();
+
+                        // Generate hover thumbnails from decoded frames
+                        var totalSec = header.timeMs / 1000;
+                        if (totalSec >= 60) {
+                            var thumbInterval = Math.max(10, totalSec / 100);
+                            var thumbs = [];
+                            var nextThumbSec = thumbInterval;
+                            var offCanvas = document.createElement('canvas');
+                            offCanvas.width = 160;
+                            offCanvas.height = 90;
+                            var offCtx = offCanvas.getContext('2d');
+                            // Capture thumbnails by walking through frames sequentially
+                            try {
+                                var memOk = !performance.memory || performance.memory.usedJSHeapSize < 500 * 1024 * 1024;
+                                for (var ti = 0; ti < allPackets.length && thumbs.length < 100 && memOk; ti++) {
+                                    var pkt = allPackets[ti];
+                                    var pktSec = pkt.timeMs / 1000;
+                                    if (pktSec >= nextThumbSec && pkt.type === TPP.TYPE_RDP_IMAGE) {
+                                        try {
+                                            offCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, 160, 90);
+                                            thumbs.push({ time_sec: pktSec, dataUrl: offCanvas.toDataURL('image/jpeg', 0.5) });
+                                        } catch(te) { /* skip corrupt frame */ }
+                                        nextThumbSec += thumbInterval;
+                                    }
+                                }
+                                if (thumbs.length > 0) timelineMarkers.setThumbnails(thumbs);
+                            } catch(thumbErr) { /* thumbnail generation failed, non-critical */ }
+                        }
+
                         // If a cached report with markers was already loaded, show them
                         reportCache.get(rid).then(function(entry) {
                             if (entry && entry.report && entry.report.markers && entry.report.markers.length > 0) {
@@ -805,7 +837,8 @@
             try { reportPanel.reset(); } catch (e) {}
         }
         if (timelineMarkers) {
-            try { timelineMarkers.clear(); } catch (e) {}
+            try { timelineMarkers.destroy(); } catch (e) {}
+            timelineMarkers = null;
         }
         allDataReady = false;
         downloadedFileCount = 0;
