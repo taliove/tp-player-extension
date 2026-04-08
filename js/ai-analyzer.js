@@ -1,4 +1,4 @@
-// Teleport RDP Web Player — AI Analyzer (Three-Layer Progressive Analysis)
+// Teleport RDP Web Player — AI Analyzer (One-Shot Analysis)
 TPP.createAIAnalyzer = function(opts) {
     var header = opts.header;
     var keyframes = opts.keyframes;
@@ -196,7 +196,7 @@ TPP.createAIAnalyzer = function(opts) {
         // Detect vision model issues — model claims it can't see images
         if (/未提供.*截图|无法.*查看.*图|I (?:can't|cannot) (?:see|view|access) (?:the |any )?image/i.test(content)) {
             console.error('[AI] Model claims it cannot see images. Check: 1) model supports vision 2) base64 data is valid');
-            console.error('[AI] Response preview:', content.substring(0, 200));
+            throw new Error('模型无法识别截图，请检查模型是否支持视觉功能');
         }
         return { text: content, usage: data.usage };
     }
@@ -289,376 +289,37 @@ TPP.createAIAnalyzer = function(opts) {
         });
     }
 
-    // --- L2: Focused Analysis (per phase, concurrent) ---
-
-    function computeL2SamplePoints(phase) {
-        var maxFrames = TPP.AI_L2_FRAMES_PER_PHASE;
-        var startSec = phase.start_sec;
-        var endSec = phase.end_sec;
-        var durationSec = endSec - startSec;
-        var points = [];
-
-        if (durationSec <= 0) return points;
-
-        points.push({ timestampSec: startSec, label: '阶段开始' });
-        points.push({ timestampSec: endSec, label: '阶段结束' });
-
-        var middleCount = Math.min(maxFrames - 2, 3);
-        if (middleCount > 0 && durationSec > 10) {
-            var interval = durationSec / (middleCount + 1);
-            for (var i = 1; i <= middleCount; i++) {
-                var sec = Math.round(startSec + interval * i);
-                points.push({ timestampSec: sec, label: '阶段中间' });
-            }
-        }
-
-        points.sort(function(a, b) { return a.timestampSec - b.timestampSec; });
-        return points;
-    }
-
-    function runL2Phase(phaseIndex, phase, l1Result, l1Summary, settings) {
-        var samplePoints = computeL2SamplePoints(phase);
-        if (samplePoints.length === 0) {
-            return Promise.resolve({ phase_name: phase.name, evaluation: '阶段时长过短，无法分析', dimensions: [] });
-        }
-
-        onPhaseReady(phaseIndex, 'analyzing');
-
-        return batchCapture(samplePoints, null).then(function(frames) {
-            if (cancelled) throw new Error('已取消');
-
-            var prompt = templates.buildL2Prompt(
-                l1Summary,
-                phase.name,
-                phase.start_sec,
-                phase.end_sec,
-                frames.length
-            );
-            return callVL(frames, prompt, templates.SYSTEM_PROMPT, settings);
-        }).then(function(vlResult) {
-            var result = parseVLResponse(vlResult.text);
-            result._usage = vlResult.usage;
-            return result;
-        });
-    }
-
-    function runL2(l1Result, settings) {
-        var phases = l1Result.phases || [];
-        if (phases.length === 0) return Promise.resolve([]);
-
-        var l1Summary = templates.buildL1Summary(l1Result);
-        var maxConcurrent = TPP.AI_MAX_CONCURRENT;
-        var results = new Array(phases.length);
-        var nextIndex = 0;
-        var activeCount = 0;
-        var resolveAll, rejectAll;
-        var settled = false;
-
-        return new Promise(function(resolve, reject) {
-            resolveAll = resolve;
-            rejectAll = reject;
-
-            function onPhaseComplete(index, result) {
-                if (settled) return;
-                results[index] = result;
-                activeCount--;
-                onPhaseReady(index, 'done', result);
-                startNext();
-            }
-
-            function onPhaseError(index, err) {
-                if (settled) return;
-                if (err.message === '已取消') {
-                    settled = true;
-                    rejectAll(err);
-                    return;
-                }
-                results[index] = { phase_name: (phases[index] || {}).name, _error: err.message, evaluation: '', dimensions: [] };
-                activeCount--;
-                onPhaseReady(index, 'error', null, err.message);
-                startNext();
-            }
-
-            function startNext() {
-                while (activeCount < maxConcurrent && nextIndex < phases.length) {
-                    (function(idx) {
-                        activeCount++;
-                        onProgress('l2_phase', idx + 1, phases.length);
-                        runL2Phase(idx, phases[idx], l1Result, l1Summary, settings)
-                            .then(function(result) { onPhaseComplete(idx, result); })
-                            .catch(function(err) { onPhaseError(idx, err); });
-                    })(nextIndex);
-                    nextIndex++;
-                }
-
-                if (activeCount === 0 && nextIndex >= phases.length) {
-                    settled = true;
-                    resolveAll(results);
-                }
-            }
-
-            startNext();
-        });
-    }
-
-    // --- L3: Targeted Deep Check ---
-
-    function computeL3SamplePoints(startSec, endSec) {
-        var maxFrames = TPP.AI_L3_FRAMES_PER_CHECK;
-        var durationSec = endSec - startSec;
-        var points = [];
-
-        if (durationSec <= 0) return points;
-
-        var interval = durationSec / (maxFrames + 1);
-        for (var i = 1; i <= maxFrames; i++) {
-            var sec = Math.round(startSec + interval * i);
-            points.push({ timestampSec: sec, label: '深度检查' });
-        }
-        return points;
-    }
-
-    function runL3Check(check, phaseIndex, l1Summary, l2Evaluation, settings) {
-        var startSec = check.time_range[0];
-        var endSec = check.time_range[1];
-        var samplePoints = computeL3SamplePoints(startSec, endSec);
-        if (samplePoints.length === 0) return Promise.resolve(null);
-
-        return batchCapture(samplePoints, null).then(function(frames) {
-            if (cancelled) throw new Error('已取消');
-
-            var prompt = templates.buildL3Prompt(
-                l1Summary,
-                l2Evaluation,
-                startSec,
-                endSec,
-                check.reason
-            );
-            return callVL(frames, prompt, templates.SYSTEM_PROMPT, settings);
-        }).then(function(vlResult) {
-            var result = parseVLResponse(vlResult.text);
-            result._usage = vlResult.usage;
-            result._phaseIndex = phaseIndex;
-            return result;
-        });
-    }
-
-    function runL3(l1Result, l2Results, settings) {
-        var l1Summary = templates.buildL1Summary(l1Result);
-        var checks = [];
-
-        for (var i = 0; i < l2Results.length; i++) {
-            var l2 = l2Results[i];
-            if (l2 && l2.need_deep_check && l2.need_deep_check.length > 0) {
-                for (var j = 0; j < l2.need_deep_check.length; j++) {
-                    checks.push({
-                        check: l2.need_deep_check[j],
-                        phaseIndex: i,
-                        l2Evaluation: l2.evaluation || ''
-                    });
-                }
-            }
-        }
-
-        if (checks.length === 0) return Promise.resolve([]);
-
-        onProgress('l3_check', 0, checks.length);
-
-        var results = [];
-        var chain = Promise.resolve();
-        for (var c = 0; c < checks.length; c++) {
-            (function(idx) {
-                chain = chain.then(function() {
-                    if (cancelled) throw new Error('已取消');
-                    onProgress('l3_check', idx + 1, checks.length);
-                    return runL3Check(
-                        checks[idx].check,
-                        checks[idx].phaseIndex,
-                        l1Summary,
-                        checks[idx].l2Evaluation,
-                        settings
-                    ).then(function(result) {
-                        if (result) results.push(result);
-                    });
-                });
-            })(c);
-        }
-
-        return chain.then(function() { return results; });
-    }
-
     // --- Assemble final report ---
 
-    function assembleReport(l1Result, l2Results, l3Results, totalTokens, durationMs) {
-        var phases = l1Result.phases || [];
-        var phaseCards = [];
-
-        for (var i = 0; i < phases.length; i++) {
-            var phase = phases[i];
-            var l2 = l2Results[i] || {};
-            var card = {
-                name: phase.name,
-                start_sec: phase.start_sec,
-                end_sec: phase.end_sec,
-                summary: phase.summary || '',
-                evaluation: l2.evaluation || '',
-                dimensions: l2.dimensions || [],
-                suspicious: l2.suspicious || null,
-                status: l2._error ? 'error' : 'done',
-                error: l2._error || null
-            };
-
-            if (l3Results) {
-                for (var j = 0; j < l3Results.length; j++) {
-                    if (l3Results[j]._phaseIndex === i) {
-                        card.deep_check = l3Results[j];
-                        if (l3Results[j].confirmed) {
-                            card.status = 'warning';
-                        }
-                    }
-                }
-            }
-
-            if (l2.phase_score_adjustment) {
-                card.score_adjustment = l2.phase_score_adjustment;
-            }
-
-            phaseCards.push(card);
+    function assembleReport(l1Result, totalTokens, durationMs) {
+        var score = l1Result.score || '-';
+        var verdict = l1Result.verdict || null;
+        if (!verdict) {
+            if (score === 'D' || score === 'C') verdict = '不通过';
+            else if (score === 'C+') verdict = '待定';
+            else verdict = '通过';
         }
 
-        // Aggregate dimensions across phases
-        var dimMap = {};
-        for (var p = 0; p < phaseCards.length; p++) {
-            var dims = phaseCards[p].dimensions || [];
-            for (var d = 0; d < dims.length; d++) {
-                var dim = dims[d];
-                if (!dimMap[dim.name]) {
-                    dimMap[dim.name] = { totalStars: 0, count: 0, comments: [], evidence: [] };
-                }
-                dimMap[dim.name].totalStars += dim.stars || 0;
-                dimMap[dim.name].count++;
-                if (dim.comment) dimMap[dim.name].comments.push(dim.comment);
-                if (dim.evidence_timestamps) {
-                    for (var e = 0; e < dim.evidence_timestamps.length; e++) {
-                        dimMap[dim.name].evidence.push(dim.evidence_timestamps[e]);
-                    }
-                }
-            }
-        }
-
-        var aggregatedDimensions = [];
-        var dimNames = Object.keys(dimMap);
-        for (var dn = 0; dn < dimNames.length; dn++) {
-            var name = dimNames[dn];
-            var dd = dimMap[name];
-            aggregatedDimensions.push({
-                name: name,
-                stars: Math.round(dd.totalStars / dd.count),
-                comment: dd.comments.join('; '),
-                evidence_timestamps: dd.evidence
-            });
-        }
-
-        var finalScore = l1Result.score || '-';
-        for (var s = 0; s < phaseCards.length; s++) {
-            if (phaseCards[s].score_adjustment && phaseCards[s].score_adjustment.new_score) {
-                finalScore = phaseCards[s].score_adjustment.new_score;
-            }
-        }
-
-        var hasWarnings = false;
-        for (var w = 0; w < phaseCards.length; w++) {
-            if (phaseCards[w].status === 'warning') { hasWarnings = true; break; }
-        }
-        var recommendation = '通过';
-        if (finalScore === 'D' || finalScore === 'C') recommendation = '不通过';
-        else if (finalScore === 'C+' || hasWarnings) recommendation = '待定';
-
-        var totalFrames = (l1Result._frames || 0);
-        for (var tf = 0; tf < l2Results.length; tf++) {
-            totalFrames += (l2Results[tf] && !l2Results[tf]._error) ? TPP.AI_L2_FRAMES_PER_PHASE : 0;
-        }
-
-        // Merge markers from L1 + derive from L2 (suspicious + evidence_timestamps)
-        var allMarkers = [];
-        if (l1Result.markers) {
-            for (var mk = 0; mk < l1Result.markers.length; mk++) {
-                allMarkers.push(l1Result.markers[mk]);
-            }
-        }
-        // Derive markers from L2 suspicious behaviors
-        for (var lm = 0; lm < l2Results.length; lm++) {
-            var l2r = l2Results[lm];
-            if (!l2r || l2r._error) continue;
-            if (l2r.suspicious && l2r.suspicious.evidence_timestamps) {
-                var ets = l2r.suspicious.evidence_timestamps;
-                for (var se = 0; se < ets.length; se++) {
-                    allMarkers.push({
-                        time_sec: ets[se],
-                        type: 'suspicious',
-                        label: l2r.suspicious.description || '可疑行为'
-                    });
-                }
-            }
-            // Derive markers from L2 dimensions with low stars
-            if (l2r.dimensions) {
-                for (var ld = 0; ld < l2r.dimensions.length; ld++) {
-                    var ldim = l2r.dimensions[ld];
-                    if (ldim.stars <= 2 && ldim.evidence_timestamps && ldim.evidence_timestamps.length > 0) {
-                        allMarkers.push({
-                            time_sec: ldim.evidence_timestamps[0],
-                            type: 'stuck',
-                            label: ldim.name + ': ' + (ldim.comment || '').substring(0, 20)
-                        });
-                    }
-                }
-            }
-        }
-        // L3: mark confirmed deep checks
-        if (l3Results) {
-            for (var l3i = 0; l3i < l3Results.length; l3i++) {
-                var l3r = l3Results[l3i];
-                if (l3r.confirmed && l3r._timeRange) {
-                    allMarkers.push({
-                        time_sec: l3r._timeRange[0],
-                        type: 'suspicious',
-                        label: '已确认: ' + (l3r.description || '').substring(0, 20),
-                        confirmed: true
-                    });
-                }
-            }
-        }
-        // Deduplicate markers within 10 seconds of each other with same type
-        allMarkers.sort(function(a, b) { return a.time_sec - b.time_sec; });
-        var dedupedMarkers = [];
-        for (var dm = 0; dm < allMarkers.length; dm++) {
-            var dup = false;
-            for (var dp = 0; dp < dedupedMarkers.length; dp++) {
-                if (dedupedMarkers[dp].type === allMarkers[dm].type
-                    && Math.abs(dedupedMarkers[dp].time_sec - allMarkers[dm].time_sec) < 10) {
-                    dup = true;
-                    break;
-                }
-            }
-            if (!dup) dedupedMarkers.push(allMarkers[dm]);
-        }
+        var markers = l1Result.markers || [];
+        markers.sort(function(a, b) { return a.time_sec - b.time_sec; });
 
         return {
             topic: l1Result.topic || '',
             tech_stack: l1Result.tech_stack || [],
-            score: finalScore,
-            summary: l1Result.summary || l1Result.one_liner || '',
-            verdict: l1Result.verdict || null,
+            score: score,
+            verdict: verdict,
             one_liner: l1Result.one_liner || l1Result.summary || '',
-            recommendation: recommendation,
-            dimensions: aggregatedDimensions,
-            phases: phaseCards,
-            markers: dedupedMarkers,
+            recommendation: verdict,
+            dimensions: l1Result.dimensions || [],
+            phases: (l1Result.phases || []).map(function(p) {
+                return { name: p.name, start_sec: p.start_sec, end_sec: p.end_sec, summary: p.summary || '', status: 'done' };
+            }),
+            markers: markers,
             _meta: {
                 model: null,
                 tokens: totalTokens,
                 durationMs: durationMs,
-                frames: totalFrames,
+                frames: l1Result._frames || 0,
                 timestamp: new Date().toISOString()
             }
         };
@@ -671,7 +332,6 @@ TPP.createAIAnalyzer = function(opts) {
         var settings;
         var totalTokens = { input: 0, output: 0 };
         var analysisStartTime = Date.now();
-        var l1Result, l2Results, l3Results;
 
         function addTokens(usage) {
             if (!usage) return;
@@ -693,39 +353,10 @@ TPP.createAIAnalyzer = function(opts) {
             return runL1(settings);
         }).then(function(result) {
             if (cancelled) throw new Error('已取消');
-            l1Result = result;
             addTokens(result._usage);
 
-            onProgress('l1_done', 0, 0);
-            onPhaseReady(-1, 'skeleton', l1Result);
-
-            return runL2(l1Result, settings);
-        }).then(function(results) {
-            if (cancelled) throw new Error('已取消');
-            l2Results = results;
-            for (var i = 0; i < results.length; i++) {
-                if (results[i] && results[i]._usage) addTokens(results[i]._usage);
-            }
-
-            return runL3(l1Result, l2Results, settings);
-        }).then(function(results) {
-            if (cancelled) throw new Error('已取消');
-            l3Results = results;
-            for (var i = 0; i < results.length; i++) {
-                if (results[i] && results[i]._usage) addTokens(results[i]._usage);
-            }
-
-            if (l3Results.length > 0) {
-                for (var j = 0; j < l3Results.length; j++) {
-                    var l3 = l3Results[j];
-                    if (l3._phaseIndex !== undefined) {
-                        onPhaseReady(l3._phaseIndex, l3.confirmed ? 'warning' : 'done', l3);
-                    }
-                }
-            }
-
             var durationMs = Date.now() - analysisStartTime;
-            var report = assembleReport(l1Result, l2Results, l3Results, totalTokens, durationMs);
+            var report = assembleReport(result, totalTokens, durationMs);
             report._meta.model = settings.model;
 
             onProgress('saving', 0, 0);
@@ -740,18 +371,8 @@ TPP.createAIAnalyzer = function(opts) {
         });
     }
 
-    function retryPhase(phaseIndex, l1Result, settings) {
-        var phases = l1Result.phases || [];
-        var phase = phases[phaseIndex];
-        if (!phase) return Promise.reject(new Error('Invalid phase index'));
-
-        var l1Summary = templates.buildL1Summary(l1Result);
-        return runL2Phase(phaseIndex, phase, l1Result, l1Summary, settings);
-    }
-
     return {
         runAnalysis: runAnalysis,
-        retryPhase: retryPhase,
         cancel: function() { cancelled = true; }
     };
 };

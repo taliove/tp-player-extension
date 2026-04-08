@@ -46,6 +46,11 @@
     var noteTags = document.getElementById('note-tags');
     var noteText = document.getElementById('note-text');
     var infoList = document.getElementById('info-list');
+    var btnTour = document.getElementById('btn-tour');
+    var tourOverlay = document.getElementById('tour-overlay');
+    var tourCounter = document.getElementById('tour-counter');
+    var tourNextBtn = document.getElementById('tour-next');
+    var tourExitBtn = document.getElementById('tour-exit');
 
     // --- Core instances ---
     var cacheManager = null;
@@ -63,9 +68,9 @@
     var reportCache = TPP.createReportCache();
     var hostResolver = TPP.createHostResolver(serverBase);
     var aiAnalyzer = null;
-    var lastL1Result = null;
-    var reportPanel = null;
+    var verdictBanner = null;
     var timelineMarkers = null;
+    var tourMode = null;
     var allDataReady = false;
     var downloadedFileCount = 0;
 
@@ -235,10 +240,54 @@
         }
     });
 
+    // --- Tour mode UI ---
+    function updateTourUI(active, idx, total) {
+        if (tourOverlay) tourOverlay.style.display = active ? '' : 'none';
+        if (tourCounter) tourCounter.textContent = total > 0 ? (idx + 1) + '/' + total : '';
+        if (btnTour) {
+            if (active) btnTour.classList.add('active');
+            else btnTour.classList.remove('active');
+        }
+        if (canvasContainer) {
+            if (active) canvasContainer.classList.add('tour-active');
+            else canvasContainer.classList.remove('tour-active');
+        }
+    }
+
+    if (btnTour) {
+        btnTour.addEventListener('click', function() {
+            if (tourMode && tourMode.isActive()) {
+                tourMode.stop();
+                return;
+            }
+            if (!tourMode) {
+                showToast('\u8bf7\u5148\u8fd0\u884c AI \u5206\u6790');
+                return;
+            }
+            if (!tourMode.start()) {
+                showToast('\u6ca1\u6709\u53ef\u5bfc\u89c8\u7684\u6807\u8bb0\u70b9');
+            }
+        });
+    }
+    if (tourNextBtn) {
+        tourNextBtn.addEventListener('click', function() {
+            if (tourMode) tourMode.next();
+        });
+    }
+    if (tourExitBtn) {
+        tourExitBtn.addEventListener('click', function() {
+            if (tourMode) tourMode.stop();
+        });
+    }
+
     // --- Shortcut overlay (? key) ---
     var shortcutOverlay = document.getElementById('shortcut-overlay');
     document.addEventListener('keydown', function(e) {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === 'Escape' && tourMode && tourMode.isActive()) {
+            tourMode.stop();
+            return;
+        }
         if (e.key === '?') {
             shortcutOverlay.style.display = shortcutOverlay.style.display === 'none' ? '' : 'none';
         }
@@ -279,27 +328,26 @@
 
     function startAnalysis() {
         if (!allDataReady || !aiAnalyzer) return;
-        reportPanel.showProgress();
-        reportPanel.updateProgress('loading', 0, 0);
+        verdictBanner.showProgress('正在采帧...');
 
         aiAnalyzer.runAnalysis().then(function(report) {
             if (!report || typeof report !== 'object') {
                 throw new Error('AI 返回了空结果');
             }
-            // Use verdict banner + timeline markers if markers present
+            // Show verdict banner result
+            verdictBanner.showResult(report);
+            // Set markers on timeline
             if (report.markers && report.markers.length > 0 && timelineMarkers) {
                 timelineMarkers.setMarkers(report.markers);
-                reportPanel.renderVerdictBanner(report);
-            } else {
-                reportPanel.renderReport(report);
             }
+            // Toast notification
+            showToast('分析完成，点击导览查看关键时刻', 'info');
         }).catch(function(err) {
-            if (err.message === '\u5df2\u53d6\u6d88') {
-                reportPanel.showIdle();
+            if (err.message === '已取消') {
+                verdictBanner.showIdle(true);
             } else {
                 console.error('[AI] Analysis error:', err);
-                reportPanel.showIdle();
-                showToast('AI \u5206\u6790\u5931\u8d25: ' + err.message, 'error');
+                verdictBanner.showError(err.message);
             }
         });
     }
@@ -308,38 +356,267 @@
         if (aiAnalyzer) aiAnalyzer.cancel();
     }
 
-    function initAIPanel() {
-        reportPanel = TPP.createReportPanel({
-            player: player,
-            rid: rid,
-            reportCache: reportCache,
-            aiSettings: aiSettings,
-            onStartAnalysis: startAnalysis,
-            onCancelAnalysis: cancelAnalysis,
-            onAutoChanged: function(checked) {
-                aiSettings.update({ autoAnalyze: checked });
-            },
-            onRetryPhase: function(phaseIndex) {
-                if (!lastL1Result || !aiAnalyzer) {
-                    startAnalysis();
-                    return;
-                }
-                aiSettings.load().then(function(s) {
-                    reportPanel.updatePhaseCard(phaseIndex, 'analyzing');
-                    aiAnalyzer.retryPhase(phaseIndex, lastL1Result, s).then(function(result) {
-                        reportPanel.updatePhaseCard(phaseIndex, 'done', result);
-                    }).catch(function(err) {
-                        reportPanel.updatePhaseCard(phaseIndex, 'error', null, err.message);
+    function initVerdictBanner() {
+        // DOM refs for verdict banner states
+        var bannerEl = document.getElementById('verdict-banner');
+        var idleEl = document.getElementById('verdict-idle');
+        var progressEl = document.getElementById('verdict-progress');
+        var resultEl = document.getElementById('verdict-result');
+        var errorEl = document.getElementById('verdict-error');
+        var phasesEl = document.getElementById('verdict-phases');
+
+        var btnAnalyze = document.getElementById('btn-ai-analyze');
+        var btnCancel = document.getElementById('btn-ai-cancel');
+        var btnRetry = document.getElementById('btn-ai-retry');
+        var btnExpand = document.getElementById('verdict-expand');
+        var progressText = document.getElementById('verdict-progress-text');
+        var badgeEl = document.getElementById('verdict-badge');
+        var scoreEl = document.getElementById('verdict-score');
+        var onelinerEl = document.getElementById('verdict-oneliner');
+        var errorTextEl = document.getElementById('verdict-error-text');
+        var chkAuto = document.getElementById('chk-ai-auto');
+
+        // Settings modal DOM refs
+        var settingsModal = document.getElementById('ai-settings-modal');
+        var btnSettings = document.getElementById('btn-ai-settings');
+        var btnSettingsResult = document.getElementById('btn-ai-settings-result');
+        var btnSettingsError = document.getElementById('btn-ai-settings-error');
+        var btnSaveSettings = document.getElementById('btn-ai-save-settings');
+        var btnCancelSettings = document.getElementById('btn-ai-cancel-settings');
+        var btnImport = document.getElementById('btn-ai-import');
+        var btnTest = document.getElementById('btn-ai-test');
+        var importFile = document.getElementById('ai-import-file');
+        var btnToggleKey = document.getElementById('btn-ai-toggle-key');
+
+        var phasesExpanded = false;
+        var currentReport = null;
+
+        function hideAll() {
+            idleEl.style.display = 'none';
+            progressEl.style.display = 'none';
+            resultEl.style.display = 'none';
+            errorEl.style.display = 'none';
+            phasesEl.style.display = 'none';
+            phasesExpanded = false;
+        }
+
+        function showIdle(dataReady) {
+            hideAll();
+            idleEl.style.display = '';
+            btnAnalyze.disabled = !dataReady;
+            btnAnalyze.textContent = dataReady ? 'AI 分析' : '数据加载中...';
+        }
+
+        function showProgress(text) {
+            hideAll();
+            progressEl.style.display = '';
+            progressText.textContent = text || '准备中...';
+        }
+
+        function showResult(report) {
+            hideAll();
+            resultEl.style.display = '';
+            currentReport = report;
+
+            // Verdict badge
+            var verdict = report.verdict || '';
+            var verdictClass = 'verdict-pending';
+            var verdictLabel = '待定';
+            if (verdict === '通过') { verdictClass = 'verdict-pass'; verdictLabel = '通过'; }
+            else if (verdict === '不通过') { verdictClass = 'verdict-fail'; verdictLabel = '不通过'; }
+            else { verdictLabel = verdict || '待定'; }
+            badgeEl.className = 'verdict-badge ' + verdictClass;
+            badgeEl.textContent = verdictLabel;
+
+            // Score
+            scoreEl.textContent = report.score ? '[' + report.score + ']' : '';
+
+            // One-liner
+            onelinerEl.textContent = report.one_liner || '';
+
+            // Pre-render phases card
+            renderPhasesCard(report.phases || []);
+        }
+
+        function showError(msg) {
+            hideAll();
+            errorEl.style.display = '';
+            errorTextEl.textContent = msg || '分析失败';
+        }
+
+        function setAutoAnalyze(on) {
+            chkAuto.classList.toggle('active', on);
+        }
+
+        function getAutoAnalyze() {
+            return chkAuto.classList.contains('active');
+        }
+
+        function resetBanner() {
+            hideAll();
+            idleEl.style.display = '';
+            btnAnalyze.disabled = true;
+            btnAnalyze.textContent = '数据加载中...';
+            currentReport = null;
+        }
+
+        function renderPhasesCard(phases) {
+            phasesEl.innerHTML = '';
+            if (!phases || phases.length === 0) return;
+            for (var i = 0; i < phases.length; i++) {
+                var p = phases[i];
+                var item = document.createElement('div');
+                item.className = 'verdict-phase-item';
+                var timeStr = formatTime(p.start_sec * 1000) + ' - ' + formatTime(p.end_sec * 1000);
+                item.innerHTML = '<span class="verdict-phase-name">' + TPP.escapeHtml(p.name) + '</span>'
+                    + '<span class="verdict-phase-time">' + timeStr + '</span>'
+                    + (p.summary ? '<span class="verdict-phase-summary">' + TPP.escapeHtml(p.summary) + '</span>' : '');
+                (function(phase) {
+                    item.addEventListener('click', function() {
+                        player.seek(phase.start_sec * 1000);
+                        updateProgressBar(phase.start_sec * 1000, player.totalMs);
                     });
-                });
+                })(p);
+                phasesEl.appendChild(item);
             }
+        }
+
+        // --- Wire click events ---
+        btnAnalyze.addEventListener('click', function() { startAnalysis(); });
+        btnCancel.addEventListener('click', function() { cancelAnalysis(); });
+        btnRetry.addEventListener('click', function() { startAnalysis(); });
+
+        btnExpand.addEventListener('click', function() {
+            phasesExpanded = !phasesExpanded;
+            phasesEl.style.display = phasesExpanded ? '' : 'none';
+            btnExpand.innerHTML = phasesExpanded ? '&#9650;' : '&#9660;';
         });
 
+        // Auto-analyze toggle
+        document.getElementById('ai-auto-group').addEventListener('click', function() {
+            var isOn = !chkAuto.classList.contains('active');
+            chkAuto.classList.toggle('active', isOn);
+            aiSettings.update({ autoAnalyze: isOn });
+        });
+
+        // --- Settings modal ---
+        function openSettings() {
+            aiSettings.load().then(function(s) {
+                var radios = settingsModal.querySelectorAll('input[name="ai-protocol"]');
+                for (var i = 0; i < radios.length; i++) {
+                    radios[i].checked = radios[i].value === s.protocol;
+                }
+                document.getElementById('ai-set-endpoint').value = s.endpoint || '';
+                document.getElementById('ai-set-apikey').value = s.apiKey || '';
+                document.getElementById('ai-set-model').value = s.model || '';
+                document.getElementById('ai-set-timeout').value = s.apiTimeoutSec || 60;
+                settingsModal.style.display = '';
+            });
+        }
+
+        function closeSettings() { settingsModal.style.display = 'none'; }
+
+        function getFormSettings() {
+            var radios = settingsModal.querySelectorAll('input[name="ai-protocol"]');
+            var protocol = 'claude';
+            for (var i = 0; i < radios.length; i++) {
+                if (radios[i].checked) { protocol = radios[i].value; break; }
+            }
+            return {
+                protocol: protocol,
+                endpoint: document.getElementById('ai-set-endpoint').value.trim(),
+                apiKey: document.getElementById('ai-set-apikey').value.trim(),
+                model: document.getElementById('ai-set-model').value.trim(),
+                apiTimeoutSec: parseInt(document.getElementById('ai-set-timeout').value, 10) || 60
+            };
+        }
+
+        if (btnSettings) btnSettings.addEventListener('click', openSettings);
+        if (btnSettingsResult) btnSettingsResult.addEventListener('click', openSettings);
+        if (btnSettingsError) btnSettingsError.addEventListener('click', openSettings);
+
+        btnSaveSettings.addEventListener('click', function() {
+            var formData = getFormSettings();
+            aiSettings.save(formData).then(function() {
+                showToast('AI 配置已保存', 'info');
+                closeSettings();
+            }).catch(function(err) {
+                showToast('保存失败: ' + err.message, 'error');
+            });
+        });
+
+        btnCancelSettings.addEventListener('click', closeSettings);
+
+        // Close modal on backdrop click
+        settingsModal.addEventListener('click', function(e) {
+            if (e.target === settingsModal) closeSettings();
+        });
+
+        // Toggle API key visibility
+        if (btnToggleKey) {
+            btnToggleKey.addEventListener('click', function() {
+                var input = document.getElementById('ai-set-apikey');
+                input.type = input.type === 'password' ? 'text' : 'password';
+            });
+        }
+
+        // Import from file
+        if (btnImport) {
+            btnImport.addEventListener('click', function() { importFile.click(); });
+            importFile.addEventListener('change', function() {
+                if (!importFile.files.length) return;
+                var reader = new FileReader();
+                reader.onload = function() {
+                    try {
+                        var imported = aiSettings.importFromJSON(reader.result);
+                        if (imported.endpoint) document.getElementById('ai-set-endpoint').value = imported.endpoint;
+                        if (imported.apiKey) document.getElementById('ai-set-apikey').value = imported.apiKey;
+                        if (imported.model) document.getElementById('ai-set-model').value = imported.model;
+                        if (imported.protocol) {
+                            var radios = settingsModal.querySelectorAll('input[name="ai-protocol"]');
+                            for (var i = 0; i < radios.length; i++) radios[i].checked = radios[i].value === imported.protocol;
+                        }
+                        showToast('配置已导入，请确认后保存', 'info');
+                    } catch (err) {
+                        showToast('导入失败: ' + err.message, 'error');
+                    }
+                };
+                reader.readAsText(importFile.files[0]);
+                importFile.value = '';
+            });
+        }
+
+        // Test connection
+        if (btnTest) {
+            btnTest.addEventListener('click', function() {
+                btnTest.disabled = true;
+                btnTest.textContent = '测试中...';
+                var formData = getFormSettings();
+                aiSettings.testConnection(formData).then(function(result) {
+                    showToast('连接成功! 模型: ' + result.model, 'info');
+                }).catch(function(err) {
+                    showToast('连接失败: ' + err.message, 'error');
+                }).then(function() {
+                    btnTest.disabled = false;
+                    btnTest.textContent = '测试连接';
+                });
+            });
+        }
+
+        // Load saved auto-analyze state
         aiSettings.load().then(function(s) {
-            reportPanel.setAutoAnalyze(s.autoAnalyze);
+            setAutoAnalyze(s.autoAnalyze);
         });
 
-        reportPanel.loadCachedReport();
+        verdictBanner = {
+            showIdle: showIdle,
+            showProgress: showProgress,
+            showResult: showResult,
+            showError: showError,
+            setAutoAnalyze: setAutoAnalyze,
+            getAutoAnalyze: getAutoAnalyze,
+            resetBanner: resetBanner
+        };
     }
 
     // --- Info panel ---
@@ -460,20 +737,13 @@
                 reportCache: reportCache,
                 rid: rid,
                 onProgress: function(stage, current, total) {
-                    if (reportPanel) reportPanel.updateProgress(stage, current, total);
-                },
-                onPhaseReady: function(phaseIndex, status, result, errorMsg) {
-                    if (!reportPanel) return;
-                    if (phaseIndex === -1 && status === 'skeleton') {
-                        lastL1Result = result;
-                        reportPanel.renderSkeleton(result);
-                        // Set L1 markers on timeline immediately
-                        if (result.markers && result.markers.length > 0 && timelineMarkers) {
-                            timelineMarkers.setMarkers(result.markers);
-                        }
-                    } else {
-                        reportPanel.updatePhaseCard(phaseIndex, status, result, errorMsg);
-                    }
+                    if (!verdictBanner) return;
+                    var text = '分析中...';
+                    if (stage === 'l1_capture') text = '正在采帧 (' + current + '/' + total + ')';
+                    else if (stage === 'l1_analyze') text = '正在分析截图...';
+                    else if (stage === 'saving') text = '正在保存报告...';
+                    else if (stage === 'loading') text = '正在加载配置...';
+                    verdictBanner.showProgress(text);
                 }
             });
 
@@ -540,10 +810,29 @@
 
                         // If a cached report with markers was already loaded, show them
                         reportCache.get(rid).then(function(entry) {
-                            if (entry && entry.report && entry.report.markers && entry.report.markers.length > 0) {
-                                timelineMarkers.setMarkers(entry.report.markers);
+                            if (entry && entry.report) {
+                                var report = entry.report;
+                                if (report.markers && report.markers.length > 0 && timelineMarkers) {
+                                    timelineMarkers.setMarkers(report.markers);
+                                }
+                                if (verdictBanner) verdictBanner.showResult(report);
                             }
                         });
+
+                        // Initialize tour mode
+                        if (TPP.createTourMode) {
+                            tourMode = TPP.createTourMode({
+                                player: player,
+                                getMarkers: function() { return timelineMarkers ? timelineMarkers.getMarkers() : []; },
+                                onSeek: function(timeMs) {
+                                    player.seek(timeMs);
+                                    updateProgressBar(timeMs, header.timeMs);
+                                },
+                                onStateChange: function(active, idx, total) {
+                                    updateTourUI(active, idx, total);
+                                }
+                            });
+                        }
                     }
 
                     // Seek to first keyframe to get a clean initial frame (avoids garbled tiles)
@@ -569,11 +858,11 @@
                     downloadedFileCount = 1;
                     if (header.datFileCount <= 1) {
                         allDataReady = true;
-                        if (reportPanel) {
-                            reportPanel.setDataReady(true);
+                        if (verdictBanner) {
+                            verdictBanner.showIdle(true);
                         }
-                    } else if (reportPanel) {
-                        reportPanel.setDataReady(false, '\u6570\u636e\u4e0b\u8f7d\u4e2d... (1/' + header.datFileCount + ')');
+                    } else if (verdictBanner) {
+                        verdictBanner.showIdle(false);
                     }
 
                     if (corruptedRanges.length > 0) {
@@ -600,16 +889,16 @@
                                     downloadedFileCount = idx;
                                     if (idx >= header.datFileCount) {
                                         allDataReady = true;
-                                        if (reportPanel) {
-                                            reportPanel.setDataReady(true);
-                                            if (reportPanel.getAutoAnalyze()) {
-                                                reportPanel.loadCachedReport().then(function(hasCached) {
-                                                    if (!hasCached) startAnalysis();
+                                        if (verdictBanner) {
+                                            verdictBanner.showIdle(true);
+                                            if (verdictBanner.getAutoAnalyze()) {
+                                                reportCache.get(rid).then(function(entry) {
+                                                    if (!entry || !entry.report) startAnalysis();
                                                 });
                                             }
                                         }
-                                    } else if (reportPanel) {
-                                        reportPanel.setDataReady(false, '\u6570\u636e\u4e0b\u8f7d\u4e2d... (' + idx + '/' + header.datFileCount + ')');
+                                    } else if (verdictBanner) {
+                                        verdictBanner.showIdle(false);
                                     }
                                 }).catch(function (err) {
                                     showToast('\u6570\u636e\u6587\u4ef6 ' + idx + ' \u52a0\u8f7d\u5931\u8d25: ' + err.message, 'warning');
@@ -712,6 +1001,8 @@
                 e.preventDefault(); cycleSpeed(1); break;
             case 'Minus': case 'NumpadSubtract':
                 e.preventDefault(); cycleSpeed(-1); break;
+            case 'KeyA':
+                e.preventDefault(); startAnalysis(); break;
         }
     });
 
@@ -729,19 +1020,6 @@
     function toggleSidebar(collapsed) {
         sidebar.classList.toggle('collapsed', collapsed);
         mainContent.classList.toggle('sidebar-collapsed', collapsed);
-        // Restore wide mode if AI tab is active when expanding
-        if (!collapsed) {
-            var activeTab = sidebar.querySelector('.sidebar-tab.active');
-            var isAI = activeTab && activeTab.getAttribute('data-tab') === 'ai-report';
-            sidebar.classList.toggle('wide', isAI);
-            // Restore saved width if user had custom-dragged
-            var sw = loadPrefs().sidebarWidth;
-            if (sw && isAI) {
-                sidebar.style.width = sw + 'px';
-            } else {
-                sidebar.style.width = '';
-            }
-        }
         savePrefs({ sidebarCollapsed: collapsed });
         setTimeout(function() { zoom.handleResize(); }, 280);
     }
@@ -796,7 +1074,7 @@
 
     init();
     notes.onReady(initNotes);
-    initAIPanel();
+    initVerdictBanner();
 
     // --- Expose resetPlayer for single-tab reuse ---
     window.__TP_RESET = function(newRid) {
@@ -837,14 +1115,18 @@
 
         // 7. Reset AI state
         aiAnalyzer = null;
-        lastL1Result = null;
-        if (reportPanel) {
-            try { reportPanel.reset(); } catch (e) {}
+        if (verdictBanner) {
+            try { verdictBanner.resetBanner(); } catch (e) {}
         }
         if (timelineMarkers) {
             try { timelineMarkers.destroy(); } catch (e) {}
             timelineMarkers = null;
         }
+        if (tourMode) {
+            try { tourMode.destroy(); } catch (e) {}
+            tourMode = null;
+        }
+        updateTourUI(false, 0, 0);
         allDataReady = false;
         downloadedFileCount = 0;
         window.__TP_THUMB_CAPTURE = null;

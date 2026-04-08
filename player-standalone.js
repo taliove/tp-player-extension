@@ -11,6 +11,15 @@
     window.__TP_FROM_EXT = params.get('from') === 'ext';
     document.title = window.__TP_RID ? ('RDP 录屏 #' + window.__TP_RID) : 'RDP 录屏回放';
 
+    // Pre-hide sidebar when opened from extension to prevent flicker —
+    // the sidebar-state port message will properly restore visibility if needed
+    if (window.__TP_FROM_EXT) {
+        var _sb = document.getElementById('sidebar');
+        var _rh = document.getElementById('sidebar-resize-handle');
+        if (_sb) _sb.style.display = 'none';
+        if (_rh) _rh.style.display = 'none';
+    }
+
     if (!window.__TP_RID) {
         document.getElementById('loading-overlay').style.display = 'none';
         var errOverlay = document.getElementById('error-overlay');

@@ -105,7 +105,7 @@ TPP.extBridge = (function() {
                     }
                     return resp.json();
                 }).then(function(data) {
-                    return { text: JSON.stringify(data), raw: data };
+                    return { ok: true, status: 200, text: JSON.stringify(data), raw: data };
                 }).catch(function(err) {
                     clearTimeout(timer);
                     if (err.name === 'AbortError') throw new Error('Request timeout (' + (actualTimeout / 1000) + 's)');

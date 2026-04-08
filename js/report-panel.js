@@ -184,8 +184,17 @@ TPP.createReportPanel = function(opts) {
         return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    var GRADE_MAP = { 'A': 95, 'B+': 82, 'B': 72, 'C+': 62, 'C': 52, 'D': 30 };
+
+    function gradeToNum(score) {
+        if (score == null) return NaN;
+        var s = String(score).trim().toUpperCase();
+        if (GRADE_MAP.hasOwnProperty(s)) return GRADE_MAP[s];
+        return parseInt(s, 10);
+    }
+
     function scoreColor(score) {
-        var n = parseInt(score, 10);
+        var n = gradeToNum(score);
         if (isNaN(n)) return 'var(--text-tertiary)';
         if (n >= 70) return 'var(--score-excellent)';
         if (n >= 50) return 'var(--score-good)';
@@ -194,7 +203,7 @@ TPP.createReportPanel = function(opts) {
     }
 
     function scorePct(score) {
-        var n = parseInt(score, 10);
+        var n = gradeToNum(score);
         if (isNaN(n)) return 0;
         return Math.max(0, Math.min(100, n));
     }

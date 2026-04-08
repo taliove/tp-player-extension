@@ -25,7 +25,71 @@
       <div class="shortcut-row"><kbd>?</kbd><span>关闭此面板</span></div>
     </div>
   </div>
-  <!-- Main content: Canvas + Sidebar -->
+  <!-- Verdict Banner (tri-state: idle / progress / result) -->
+  <div id="verdict-banner">
+    <div id="verdict-idle">
+      <button id="btn-ai-analyze" class="verdict-btn-analyze" disabled>数据加载中...</button>
+      <div class="verdict-idle-right">
+        <div class="verdict-auto-group" id="ai-auto-group">
+          <span>自动</span>
+          <div class="toggle toggle-sm" id="chk-ai-auto"><div class="toggle-knob"></div></div>
+        </div>
+        <button id="btn-ai-settings" class="verdict-btn-icon" title="设置">&#9881;</button>
+      </div>
+    </div>
+    <div id="verdict-progress" style="display:none">
+      <span class="verdict-spinner"></span>
+      <span id="verdict-progress-text">准备中...</span>
+      <button id="btn-ai-cancel" class="verdict-btn-cancel">取消</button>
+    </div>
+    <div id="verdict-result" style="display:none">
+      <span id="verdict-badge"></span>
+      <span id="verdict-score"></span>
+      <span id="verdict-oneliner"></span>
+      <button id="verdict-expand" class="verdict-btn-icon" title="展开详情">&#9660;</button>
+      <button id="btn-ai-settings-result" class="verdict-btn-icon" title="设置">&#9881;</button>
+    </div>
+    <div id="verdict-error" style="display:none">
+      <span class="verdict-error-text" id="verdict-error-text">分析失败</span>
+      <button id="btn-ai-retry" class="verdict-btn-retry">重新分析</button>
+      <button id="btn-ai-settings-error" class="verdict-btn-icon" title="设置">&#9881;</button>
+    </div>
+    <div id="verdict-phases" class="verdict-phases-card" style="display:none"></div>
+  </div>
+  <!-- AI Settings Modal -->
+  <div id="ai-settings-modal" class="settings-modal" style="display:none">
+    <div class="settings-modal-content">
+      <div class="settings-modal-title">AI 配置</div>
+      <div class="ai-settings-form">
+        <label class="ai-settings-label">协议</label>
+        <div class="ai-settings-radio">
+          <label><input type="radio" name="ai-protocol" value="claude" checked> Claude API</label>
+          <label><input type="radio" name="ai-protocol" value="openai"> OpenAI 兼容</label>
+        </div>
+        <label class="ai-settings-label">Endpoint</label>
+        <input type="text" id="ai-set-endpoint" class="ai-settings-input" placeholder="https://api.anthropic.com">
+        <label class="ai-settings-label">API Key</label>
+        <div class="ai-settings-key-row">
+          <input type="password" id="ai-set-apikey" class="ai-settings-input" placeholder="sk-...">
+          <button id="btn-ai-toggle-key" class="ai-btn-icon">&#128065;</button>
+        </div>
+        <label class="ai-settings-label">Model</label>
+        <input type="text" id="ai-set-model" class="ai-settings-input" placeholder="claude-sonnet-4-6">
+        <label class="ai-settings-label">API 超时 (秒)</label>
+        <input type="number" id="ai-set-timeout" class="ai-settings-input" min="30" max="300" value="60">
+      </div>
+      <div class="ai-settings-actions">
+        <button id="btn-ai-import" class="ai-btn-secondary">从文件导入</button>
+        <button id="btn-ai-test" class="ai-btn-secondary">测试连接</button>
+        <input type="file" id="ai-import-file" accept=".json" style="display:none">
+      </div>
+      <div class="ai-settings-actions" style="margin-top:8px">
+        <button id="btn-ai-save-settings" class="ai-btn-primary">保存</button>
+        <button id="btn-ai-cancel-settings" class="ai-btn-secondary">关闭</button>
+      </div>
+    </div>
+  </div>
+  <!-- Main content: Canvas + Notes Panel -->
   <div id="main-content">
     <!-- Canvas area -->
     <div id="canvas-container">
@@ -50,112 +114,28 @@
         <span class="hint-sep">|</span>
         <kbd>+/-</kbd> 变速
       </div>
+      <div id="tour-overlay" style="display:none">
+        <div id="tour-pill">
+          <span id="tour-counter">1/5</span>
+          <button id="tour-next" class="tour-btn">下一个</button>
+          <button id="tour-exit" class="tour-btn tour-btn-exit">结束导览</button>
+        </div>
+      </div>
     </div>
-    <button id="btn-sidebar-expand" title="展开侧栏">&#10094;</button>
-    <!-- Sidebar -->
+    <button id="btn-sidebar-expand" title="展开笔记">&#10094;</button>
+    <!-- Notes Panel (simplified sidebar) -->
     <div id="sidebar-resize-handle"></div>
-    <div id="sidebar">
+    <div id="sidebar" class="notes-only">
       <div id="sidebar-header">
-        <div id="sidebar-tabs">
-          <button class="sidebar-tab active" data-tab="notes">笔记</button>
-          <button class="sidebar-tab" data-tab="info">信息</button>
-          <button class="sidebar-tab" data-tab="ai-report">AI 报告</button>
-        </div>
-        <button id="btn-sidebar-toggle" class="sidebar-toggle-btn" title="收起侧栏">&#10095;</button>
+        <span class="notes-panel-title">笔记</span>
+        <button id="btn-sidebar-toggle" class="sidebar-toggle-btn" title="收起笔记">&#10095;</button>
       </div>
-      <div id="sidebar-panels">
-        <div id="panel-notes" class="sidebar-panel active">
-          <div id="note-tags">
-            <span class="note-tag tag-pass" data-tag="pass">通过</span>
-            <span class="note-tag tag-fail" data-tag="fail">淘汰</span>
-            <span class="note-tag tag-pending" data-tag="pending">待定</span>
-          </div>
-          <textarea id="note-text" placeholder="输入评估笔记..."></textarea>
-        </div>
-        <div id="panel-info" class="sidebar-panel">
-          <div id="info-list">
-            <span class="info-label">加载中...</span>
-          </div>
-        </div>
-        <div id="panel-ai-report" class="sidebar-panel">
-          <div id="ai-report-content">
-            <div id="ai-report-idle">
-              <div class="ai-idle-header">AI 智能评估</div>
-              <div class="ai-idle-steps">
-                <div class="ai-idle-step">
-                  <span class="ai-idle-step-num">1</span>
-                  <div class="ai-idle-step-text"><strong>全局扫描</strong><span>均匀采帧，识别题目与阶段</span></div>
-                </div>
-                <div class="ai-idle-step">
-                  <span class="ai-idle-step-num">2</span>
-                  <div class="ai-idle-step-text"><strong>逐段分析</strong><span>每阶段密采，评估各维度</span></div>
-                </div>
-                <div class="ai-idle-step">
-                  <span class="ai-idle-step-num">3</span>
-                  <div class="ai-idle-step-text"><strong>深度检查</strong><span>对可疑区域进行深入核实</span></div>
-                </div>
-              </div>
-              <button id="btn-ai-analyze" class="ai-btn-primary" disabled>数据加载中...</button>
-              <div class="ai-idle-footer">
-                <div class="ai-auto-group" id="ai-auto-group">
-                  <span>自动分析</span>
-                  <div class="toggle" id="chk-ai-auto"><div class="toggle-knob"></div></div>
-                </div>
-                <button id="btn-ai-settings" class="ai-btn-icon-sm" title="设置">&#9881;</button>
-              </div>
-            </div>
-            <div id="ai-report-progress" style="display:none">
-              <div class="ai-progress-ring-container">
-                <svg class="ai-progress-ring" viewBox="0 0 80 80">
-                  <circle class="ai-progress-track" cx="40" cy="40" r="34" />
-                  <circle class="ai-progress-fill" cx="40" cy="40" r="34" id="ai-progress-circle" />
-                </svg>
-                <span class="ai-progress-pct" id="ai-progress-pct">0%</span>
-              </div>
-              <div class="ai-progress-pipeline">
-                <div class="ai-pipeline-step" data-step="l1"><span class="ai-pipeline-dot"></span><span class="ai-pipeline-label">L1 扫描</span></div>
-                <div class="ai-pipeline-connector"></div>
-                <div class="ai-pipeline-step" data-step="l2"><span class="ai-pipeline-dot"></span><span class="ai-pipeline-label">L2 分析</span></div>
-                <div class="ai-pipeline-connector"></div>
-                <div class="ai-pipeline-step" data-step="l3"><span class="ai-pipeline-dot"></span><span class="ai-pipeline-label">L3 深查</span></div>
-              </div>
-              <div id="ai-progress-text">准备中...</div>
-              <button id="btn-ai-cancel" class="ai-btn-text-cancel">取消分析</button>
-            </div>
-            <div id="ai-report-result" style="display:none"></div>
-            <div id="ai-settings-panel" style="display:none">
-              <div class="ai-report-section-title">API 配置</div>
-              <div class="ai-settings-form">
-                <label class="ai-settings-label">协议</label>
-                <div class="ai-settings-radio">
-                  <label><input type="radio" name="ai-protocol" value="claude" checked> Claude API</label>
-                  <label><input type="radio" name="ai-protocol" value="openai"> OpenAI 兼容</label>
-                </div>
-                <label class="ai-settings-label">Endpoint</label>
-                <input type="text" id="ai-set-endpoint" class="ai-settings-input" placeholder="https://api.anthropic.com">
-                <label class="ai-settings-label">API Key</label>
-                <div class="ai-settings-key-row">
-                  <input type="password" id="ai-set-apikey" class="ai-settings-input" placeholder="sk-...">
-                  <button id="btn-ai-toggle-key" class="ai-btn-icon">&#128065;</button>
-                </div>
-                <label class="ai-settings-label">Model</label>
-                <input type="text" id="ai-set-model" class="ai-settings-input" placeholder="claude-sonnet-4-6">
-                <label class="ai-settings-label">API 超时 (秒)</label>
-                <input type="number" id="ai-set-timeout" class="ai-settings-input" min="30" max="300" value="60">
-              </div>
-              <div class="ai-settings-actions">
-                <button id="btn-ai-import" class="ai-btn-secondary">从文件导入</button>
-                <button id="btn-ai-test" class="ai-btn-secondary">测试连接</button>
-                <input type="file" id="ai-import-file" accept=".json" style="display:none">
-              </div>
-              <div class="ai-settings-actions" style="margin-top:8px">
-                <button id="btn-ai-save-settings" class="ai-btn-primary">保存</button>
-                <button id="btn-ai-cancel-settings" class="ai-btn-secondary">返回</button>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div id="note-tags">
+        <span class="note-tag tag-pass" data-tag="pass">通过</span>
+        <span class="note-tag tag-fail" data-tag="fail">淘汰</span>
+        <span class="note-tag tag-pending" data-tag="pending">待定</span>
       </div>
+      <textarea id="note-text" placeholder="输入评估笔记..."></textarea>
     </div>
   </div>
   <!-- Control bar -->
@@ -172,6 +152,7 @@
         <div id="hover-preview" style="display:none">
           <img id="hover-preview-img" alt="">
           <span id="hover-preview-time"></span>
+          <div id="hover-preview-marker" style="display:none"></div>
         </div>
       </div>
       <span id="time-display">00:00 / 00:00</span>
@@ -189,6 +170,8 @@
         <div id="skip-toggle" class="toggle active"><div class="toggle-knob"></div></div>
         <span>跳过静默</span>
       </div>
+      <div class="ctrl-separator"></div>
+      <button id="btn-tour" class="text-btn" title="导览模式 — 自动播放标记点">导览</button>
       <div class="ctrl-separator"></div>
       <div class="zoom-controls">
         <button id="btn-zoom-out" class="icon-btn" title="缩小">&#8722;</button>
@@ -222,8 +205,8 @@
 <script src="js/prompt-templates.js"></script>
 <script src="js/report-cache.js"></script>
 <script src="js/ai-analyzer.js"></script>
-<script src="js/report-panel.js"></script>
 <script src="js/timeline-markers.js"></script>
+<script src="js/tour-mode.js"></script>
 <script src="js/host-resolver.js"></script>
 <script src="js/cache-manager.js"></script>
 <script src="js/downloader.js"></script>
