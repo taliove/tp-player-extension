@@ -277,6 +277,7 @@ TPP.createAIAnalyzer = function(opts) {
         onProgress('l1_capture', 0, samplePoints.length);
         return batchCapture(samplePoints, 'l1_capture').then(function(frames) {
             if (cancelled) throw new Error('已取消');
+            lastCapturedFrames = frames;
             onProgress('l1_analyze', 0, 0);
 
             var prompt = templates.buildL1Prompt(frames.length, Math.round(totalMs / 1000));
@@ -290,6 +291,9 @@ TPP.createAIAnalyzer = function(opts) {
     }
 
     // --- Assemble final report ---
+
+    // Store captured frames for PDF report reuse
+    var lastCapturedFrames = null;
 
     function assembleReport(l1Result, totalTokens, durationMs) {
         var score = l1Result.score || '-';
@@ -321,7 +325,8 @@ TPP.createAIAnalyzer = function(opts) {
                 durationMs: durationMs,
                 frames: l1Result._frames || 0,
                 timestamp: new Date().toISOString()
-            }
+            },
+            _capturedFrames: lastCapturedFrames || []
         };
     }
 
@@ -373,6 +378,9 @@ TPP.createAIAnalyzer = function(opts) {
 
     return {
         runAnalysis: runAnalysis,
-        cancel: function() { cancelled = true; }
+        cancel: function() { cancelled = true; },
+        captureFrames: function(samplePoints) {
+            return batchCapture(samplePoints, null);
+        }
     };
 };

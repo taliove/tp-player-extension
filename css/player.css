@@ -2501,3 +2501,32 @@ body > :not(#player-app):not(script) {
     flex: 1;
     margin: var(--space-md) var(--space-lg);
 }
+
+/* --- PDF Report: Print Overlay --- */
+@media print {
+    #player-app, #control-bar, #toast-container, #info-bar,
+    #verdict-banner, #main-content, #shortcut-overlay,
+    #ai-settings-modal, #shortcut-bar {
+        display: none !important;
+    }
+    #report-print-overlay {
+        display: block !important;
+    }
+    body {
+        background: white !important;
+        margin: 0;
+        padding: 0;
+    }
+}
+
+/* Report export button style */
+#btn-export-report,
+#btn-export-report-idle {
+    font-size: 14px;
+    cursor: pointer;
+}
+#btn-export-report:disabled,
+#btn-export-report-idle:disabled {
+    opacity: 0.35;
+    cursor: default;
+}

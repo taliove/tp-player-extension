@@ -70,10 +70,13 @@
             extBase + 'lib/rle.js',
             extBase + 'js/constants.js',
             extBase + 'js/ext-bridge.js',
+            extBase + 'js/shared-utils.js',
             extBase + 'js/ai-settings.js',
             extBase + 'js/prompt-templates.js',
             extBase + 'js/report-cache.js',
             extBase + 'js/ai-analyzer.js',
+            extBase + 'js/report-template.js',
+            extBase + 'js/report-generator.js',
             extBase + 'js/timeline-markers.js',
             extBase + 'js/tour-mode.js',
             extBase + 'js/host-resolver.js',
@@ -87,6 +90,7 @@
             extBase + 'js/zoom.js',
             extBase + 'js/notes.js',
             extBase + 'js/history.js',
+            extBase + 'js/onboarding.js',
             extBase + 'js/app.js'
         ], 0);
     }
@@ -141,6 +145,7 @@
             + '          <div class="toggle toggle-sm" id="chk-ai-auto"><div class="toggle-knob"></div></div>'
             + '        </div>'
             + '        <button id="btn-ai-settings" class="verdict-btn-icon" title="\u8bbe\u7f6e">&#9881;</button>'
+            + '        <button id="btn-export-report-idle" class="verdict-btn-icon" title="\u5bfc\u51fa\u62a5\u544a" disabled>&#128196;</button>'
             + '      </div>'
             + '    </div>'
             + '    <div id="verdict-progress" style="display:none">'
@@ -153,6 +158,7 @@
             + '      <span id="verdict-score"></span>'
             + '      <span id="verdict-oneliner"></span>'
             + '      <button id="verdict-expand" class="verdict-btn-icon" title="\u5c55\u5f00\u8be6\u60c5">&#9660;</button>'
+            + '      <button id="btn-export-report" class="verdict-btn-icon" title="\u5bfc\u51fa\u62a5\u544a" disabled>&#128196;</button>'
             + '      <button id="btn-ai-settings-result" class="verdict-btn-icon" title="\u8bbe\u7f6e">&#9881;</button>'
             + '    </div>'
             + '    <div id="verdict-error" style="display:none">'

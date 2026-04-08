@@ -71,6 +71,7 @@
     var verdictBanner = null;
     var timelineMarkers = null;
     var tourMode = null;
+    var reportGenerator = null;
     var allDataReady = false;
     var downloadedFileCount = 0;
 
@@ -619,10 +620,48 @@
         };
     }
 
+    // --- Report Generator ---
+    function initReportGenerator() {
+        if (!TPP.createReportGenerator) return;
+        reportGenerator = TPP.createReportGenerator({
+            reportCache: reportCache,
+            aiAnalyzer: null, // set later when aiAnalyzer is created
+            notes: notes,
+            rid: rid,
+            showToast: showToast
+        });
+
+        var btnReport = document.getElementById('btn-export-report');
+        var btnReportIdle = document.getElementById('btn-export-report-idle');
+
+        function onReportClick(e) {
+            if (reportGenerator) {
+                reportGenerator.generateReport(e.shiftKey);
+            }
+        }
+
+        if (btnReport) {
+            btnReport.addEventListener('click', onReportClick);
+        }
+        if (btnReportIdle) {
+            btnReportIdle.addEventListener('click', onReportClick);
+        }
+    }
+
+    function enableReportButtons() {
+        var btns = [document.getElementById('btn-export-report'), document.getElementById('btn-export-report-idle')];
+        for (var i = 0; i < btns.length; i++) {
+            if (btns[i]) {
+                btns[i].disabled = false;
+                btns[i].title = '\u5bfc\u51fa\u62a5\u544a';
+            }
+        }
+    }
+
     // --- Info panel ---
     function updateInfoPanel(header) {
-        if (!infoList) return;
         if (header) window.__TP_HEADER = header;
+        if (!infoList) return;
         var h = window.__TP_HEADER;
         if (!h) {
             infoList.innerHTML = '<span class="info-label">\u52a0\u8f7d\u4e2d...</span>';
@@ -747,6 +786,11 @@
                 }
             });
 
+            // Wire aiAnalyzer to reportGenerator for frame capture
+            if (reportGenerator) {
+                reportGenerator.aiAnalyzer = aiAnalyzer;
+            }
+
             if (header.datFileCount > 0) {
                 showLoading('\u6b63\u5728\u4e0b\u8f7d\u6570\u636e\u6587\u4ef6 1/' + header.datFileCount + '...', '');
                 return downloader.readFileWithProgress('tp-rdp-1.tpd', function (received, total) {
@@ -861,6 +905,8 @@
                         if (verdictBanner) {
                             verdictBanner.showIdle(true);
                         }
+                        if (reportGenerator) reportGenerator.setReady(true);
+                        enableReportButtons();
                     } else if (verdictBanner) {
                         verdictBanner.showIdle(false);
                     }
@@ -889,6 +935,8 @@
                                     downloadedFileCount = idx;
                                     if (idx >= header.datFileCount) {
                                         allDataReady = true;
+                                        if (reportGenerator) reportGenerator.setReady(true);
+                                        enableReportButtons();
                                         if (verdictBanner) {
                                             verdictBanner.showIdle(true);
                                             if (verdictBanner.getAutoAnalyze()) {
@@ -1075,6 +1123,7 @@
     init();
     notes.onReady(initNotes);
     initVerdictBanner();
+    initReportGenerator();
 
     // --- Expose resetPlayer for single-tab reuse ---
     window.__TP_RESET = function(newRid) {

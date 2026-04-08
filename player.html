@@ -35,6 +35,7 @@
           <div class="toggle toggle-sm" id="chk-ai-auto"><div class="toggle-knob"></div></div>
         </div>
         <button id="btn-ai-settings" class="verdict-btn-icon" title="设置">&#9881;</button>
+        <button id="btn-export-report-idle" class="verdict-btn-icon" title="导出报告" disabled>&#128196;</button>
       </div>
     </div>
     <div id="verdict-progress" style="display:none">
@@ -47,6 +48,7 @@
       <span id="verdict-score"></span>
       <span id="verdict-oneliner"></span>
       <button id="verdict-expand" class="verdict-btn-icon" title="展开详情">&#9660;</button>
+      <button id="btn-export-report" class="verdict-btn-icon" title="导出报告" disabled>&#128196;</button>
       <button id="btn-ai-settings-result" class="verdict-btn-icon" title="设置">&#9881;</button>
     </div>
     <div id="verdict-error" style="display:none">
@@ -205,6 +207,8 @@
 <script src="js/prompt-templates.js"></script>
 <script src="js/report-cache.js"></script>
 <script src="js/ai-analyzer.js"></script>
+<script src="js/report-template.js"></script>
+<script src="js/report-generator.js"></script>
 <script src="js/timeline-markers.js"></script>
 <script src="js/tour-mode.js"></script>
 <script src="js/host-resolver.js"></script>
